@@ -15,6 +15,56 @@
     return isNaN(num) ? 1 : num;
   }
 
+  // Parse CSS color into separate Hex and Opacity for SVG (fixes Figma 100% white stroke bug)
+  function parseSvgColor(str) {
+    if (!str || typeof str !== 'string') return null;
+    const clean = str.trim().toLowerCase();
+    if (clean === 'transparent' || clean === 'none' || clean === 'rgba(0, 0, 0, 0)' || clean === 'rgba(0,0,0,0)' || clean === 'rgb(0 0 0 / 0)') {
+      return null;
+    }
+
+    // Hex (#rgb, #rgba, #rrggbb, #rrggbbaa)
+    if (clean.startsWith('#')) {
+      let hex = clean.slice(1);
+      if (hex.length === 3) hex = hex.split('').map(c => c + c).join('');
+      if (hex.length === 4) hex = hex.split('').map(c => c + c).join('');
+      let opacity = 1;
+      if (hex.length === 8) {
+        opacity = Math.round((parseInt(hex.slice(6, 8), 16) / 255) * 100) / 100;
+        hex = hex.slice(0, 6);
+      }
+      return { hex: '#' + hex, opacity };
+    }
+
+    // RGB / RGBA
+    const rgbMatch = clean.match(/rgba?\(\s*([\d.]+%?)[,\s]+([\d.]+%?)[,\s]+([\d.]+%?)(?:[,\s/]+([\d.]+%?))?\s*\)/);
+    if (rgbMatch) {
+      const parseVal = (v) => {
+        if (!v) return 0;
+        if (v.endsWith('%')) return Math.round((parseFloat(v) / 100) * 255);
+        return Math.round(parseFloat(v));
+      };
+      const r = parseVal(rgbMatch[1]);
+      const g = parseVal(rgbMatch[2]);
+      const b = parseVal(rgbMatch[3]);
+      let opacity = 1;
+      if (rgbMatch[4] !== undefined) {
+        if (rgbMatch[4].endsWith('%')) opacity = parseFloat(rgbMatch[4]) / 100;
+        else opacity = parseFloat(rgbMatch[4]);
+      }
+      opacity = Math.round(opacity * 1000) / 1000;
+      if (opacity <= 0.001) return null;
+
+      const toHex = (n) => {
+        const h = Math.max(0, Math.min(255, n)).toString(16);
+        return h.length === 1 ? '0' + h : h;
+      };
+      return { hex: '#' + toHex(r) + toHex(g) + toHex(b), opacity };
+    }
+
+    return { hex: str, opacity: 1 };
+  }
+
   // Parse CSS RGBA/RGB/Hex color
   function parseCssColor(str) {
     if (!str || typeof str !== 'string') return null;
@@ -898,7 +948,7 @@
       }
     }
 
-    // 2. Handle Image Elements (Smart Image Naming)
+    // 2. Handle Image Elements (Smart Image Naming & Circular Avatar Detection)
     if (tagName === 'img') {
       const dataUri = captureRenderedImage(el);
       const alt = el.getAttribute('alt')?.trim();
@@ -917,6 +967,49 @@
         }
       }
 
+      // Check if image itself has rounded corners or is a 50% circle
+      let imgBorderRadius = {
+        topLeft: parsePx(style.borderTopLeftRadius),
+        topRight: parsePx(style.borderTopRightRadius),
+        bottomRight: parsePx(style.borderBottomRightRadius),
+        bottomLeft: parsePx(style.borderBottomLeftRadius)
+      };
+
+      const rawRadius = el.style?.borderRadius || style.borderRadius || '';
+      if (rawRadius.includes('50%') || rawRadius.includes('9999px') || /rounded-full/i.test(el.className)) {
+        const half = Math.round(Math.min(bounds.width, bounds.height) / 2);
+        imgBorderRadius = { topLeft: half, topRight: half, bottomRight: half, bottomLeft: half };
+      }
+
+      // If img has no border radius, check parent element for overflow:hidden + rounded-full (Tailwind/Radix avatar)
+      if (imgBorderRadius.topLeft === 0 && imgBorderRadius.topRight === 0 && imgBorderRadius.bottomRight === 0 && imgBorderRadius.bottomLeft === 0) {
+        let cur = el.parentElement;
+        while (cur && cur !== document.body) {
+          const pStyle = window.getComputedStyle(cur);
+          const pRaw = cur.style?.borderRadius || pStyle.borderRadius || '';
+          const hasRadius = pStyle.borderTopLeftRadius !== '0px' || pRaw.includes('50%') || pRaw.includes('9999px') || /rounded-full/i.test(cur.className);
+          const hasClip = pStyle.overflow === 'hidden' || pStyle.overflow === 'clip';
+
+          if (hasRadius && hasClip) {
+            let rTopLeft = parsePx(pStyle.borderTopLeftRadius);
+            if (pRaw.includes('50%') || pRaw.includes('9999px') || /rounded-full/i.test(cur.className) || rTopLeft >= bounds.width / 2) {
+              const half = Math.round(Math.min(bounds.width, bounds.height) / 2);
+              imgBorderRadius = { topLeft: half, topRight: half, bottomRight: half, bottomLeft: half };
+            } else {
+              imgBorderRadius = {
+                topLeft: rTopLeft,
+                topRight: parsePx(pStyle.borderTopRightRadius),
+                bottomRight: parsePx(pStyle.borderBottomRightRadius),
+                bottomLeft: parsePx(pStyle.borderBottomLeftRadius)
+              };
+            }
+            break;
+          }
+          if (cur === el.parentElement?.parentElement) break;
+          cur = cur.parentElement;
+        }
+      }
+
       return {
         type: 'image',
         name: imgName,
@@ -926,12 +1019,7 @@
         href,
         rotation: parseTransform(style.transform),
         src: dataUri,
-        borderRadius: {
-          topLeft: parsePx(style.borderTopLeftRadius),
-          topRight: parsePx(style.borderTopRightRadius),
-          bottomRight: parsePx(style.borderBottomRightRadius),
-          bottomLeft: parsePx(style.borderBottomLeftRadius)
-        },
+        borderRadius: imgBorderRadius,
         opacity: parseOpacity(style.opacity)
       };
     }
@@ -1071,6 +1159,46 @@
             const fontSize = parsePx(style.fontSize) || 14;
             const isSingleLine = textBounds.height <= fontSize * 1.6;
 
+            // Extract exact rendered line breaks using DOM Range
+            let exactLines = [];
+            try {
+              const clientRects = range.getClientRects();
+              if (clientRects.length > 1) {
+                const words = textVal.trim().split(/\s+/);
+                if (words.length > 1) {
+                  let curLine = '';
+                  let lastTop = null;
+                  let searchOffset = 0;
+                  
+                  for (let w = 0; w < words.length; w++) {
+                    const word = words[w];
+                    const wordIdx = textVal.indexOf(word, searchOffset);
+                    if (wordIdx !== -1) {
+                      searchOffset = wordIdx + word.length;
+                      const wRange = document.createRange();
+                      wRange.setStart(child, wordIdx);
+                      wRange.setEnd(child, wordIdx + word.length);
+                      const wRect = wRange.getBoundingClientRect();
+                      
+                      if (lastTop === null) {
+                        lastTop = wRect.top;
+                        curLine = word;
+                      } else if (Math.abs(wRect.top - lastTop) > 4) {
+                        if (curLine) exactLines.push(curLine);
+                        curLine = word;
+                        lastTop = wRect.top;
+                      } else {
+                        curLine += ' ' + word;
+                      }
+                    } else {
+                      curLine += (curLine ? ' ' : '') + word;
+                    }
+                  }
+                  if (curLine) exactLines.push(curLine);
+                }
+              }
+            } catch (e) {}
+
             // Preserve whitespace intelligently between inline items
             let textClean = textVal;
             if (!child.previousSibling && !child.nextSibling) {
@@ -1090,6 +1218,7 @@
                 href,
                 rotation: parseTransform(style.transform),
                 text: textClean,
+                lines: exactLines.length > 0 ? exactLines : null,
                 isSingleLine,
                 style: {
                   color: style.color,
@@ -1468,9 +1597,13 @@
     }
   }
 
-  function wrapTextToLines(text, maxWidth, fontSize) {
+  let clipCounter = 0;
+
+  function wrapTextToLines(text, maxWidth, fontSize, letterSpacing) {
     if (!text || maxWidth <= 0) return [text];
-    const avgCharWidth = Math.max(1, fontSize * 0.55);
+    const ls = letterSpacing || 0;
+    // High-fidelity average char width: ~0.47 * fontSize for sans-serif with tracking
+    const avgCharWidth = Math.max(1, fontSize * 0.47 + ls);
     const maxCharsPerLine = Math.max(10, Math.floor(maxWidth / avgCharWidth));
 
     const rawLines = text.split('\n');
@@ -1513,15 +1646,19 @@
     const s = node.style || {};
     const opacityAttr = node.opacity !== undefined && node.opacity !== 1 ? ' opacity="' + node.opacity + '"' : '';
 
-    // 1. Text Node
+    // 1. Text Node (with separate fill-opacity & exact lines)
     if (node.type === 'text') {
       const text = node.text || '';
-      const color = s.color || '#000000';
+      const rawColor = s.color || '#000000';
+      const tc = parseSvgColor(rawColor) || { hex: '#000000', opacity: 1 };
+      const color = tc.hex;
+      const textFillOpacity = tc.opacity < 1 ? ' fill-opacity="' + tc.opacity + '"' : '';
       const fontSize = s.fontSize || 14;
       const fontFamily = s.fontFamily || 'Inter, -apple-system, sans-serif';
       const fontWeight = s.fontWeight || '400';
       const lineHeight = s.lineHeight || Math.round(fontSize * 1.3);
       const textY = Math.round(fontSize * 0.85);
+      const letterSpacingAttr = s.letterSpacing ? ' letter-spacing="' + s.letterSpacing + 'px"' : '';
 
       let textAnchor = '';
       let textX = 0;
@@ -1534,7 +1671,9 @@
       }
 
       const isSingleLine = node.isSingleLine || (s.whiteSpace === 'nowrap');
-      const lines = (!isSingleLine && width > 24) ? wrapTextToLines(text, width, fontSize) : [text];
+      const lines = (node.lines && node.lines.length > 0) 
+        ? node.lines 
+        : ((!isSingleLine && width > 24) ? wrapTextToLines(text, width, fontSize, s.letterSpacing) : [text]);
 
       if (lines.length > 1) {
         let tspans = '';
@@ -1543,20 +1682,38 @@
           tspans += '    <tspan x="' + textX + '" y="' + curY + '">' + escapeXml(line) + '</tspan>\n';
         });
         return '<g transform="translate(' + x + ', ' + y + ')"' + opacityAttr + '>\n' +
-          '  <text font-family="' + escapeXml(fontFamily) + '" font-size="' + fontSize + '" font-weight="' + fontWeight + '" fill="' + color + '"' + textAnchor + '>\n' +
+          '  <text font-family="' + escapeXml(fontFamily) + '" font-size="' + fontSize + '" font-weight="' + fontWeight + '" fill="' + color + '"' + textFillOpacity + textAnchor + letterSpacingAttr + '>\n' +
           tspans +
           '  </text>\n' +
           '</g>\n';
       }
 
       return '<g transform="translate(' + x + ', ' + y + ')"' + opacityAttr + '>\n' +
-        '  <text x="' + textX + '" y="' + textY + '" font-family="' + escapeXml(fontFamily) + '" font-size="' + fontSize + '" font-weight="' + fontWeight + '" fill="' + color + '"' + textAnchor + '>' + escapeXml(text) + '</text>\n' +
+        '  <text x="' + textX + '" y="' + textY + '" font-family="' + escapeXml(fontFamily) + '" font-size="' + fontSize + '" font-weight="' + fontWeight + '" fill="' + color + '"' + textFillOpacity + textAnchor + letterSpacingAttr + '>' + escapeXml(text) + '</text>\n' +
         '</g>\n';
     }
 
-    // 2. Image Node
+    // 2. Image Node (with circular clipPath support)
     if (node.type === 'image' && node.src) {
-      return '<g transform="translate(' + x + ', ' + y + ')"' + opacityAttr + '>\n' +
+      let clipDef = '';
+      let clipAttr = '';
+      const r = node.borderRadius ? Math.max(
+        node.borderRadius.topLeft || 0,
+        node.borderRadius.topRight || 0,
+        node.borderRadius.bottomRight || 0,
+        node.borderRadius.bottomLeft || 0
+      ) : 0;
+
+      if (r > 0) {
+        clipCounter++;
+        const clipId = 'zcrap_clip_' + clipCounter;
+        const safeR = Math.min(r, Math.round(width / 2), Math.round(height / 2));
+        clipDef = '  <defs><clipPath id="' + clipId + '"><rect x="0" y="0" width="' + width + '" height="' + height + '" rx="' + safeR + '" ry="' + safeR + '"/></clipPath></defs>\n';
+        clipAttr = ' clip-path="url(#' + clipId + ')"';
+      }
+
+      return '<g transform="translate(' + x + ', ' + y + ')"' + opacityAttr + clipAttr + '>\n' +
+        clipDef +
         '  <image href="' + escapeXml(node.src) + '" x="0" y="0" width="' + width + '" height="' + height + '" preserveAspectRatio="none"/>\n' +
         '</g>\n';
     }
@@ -1570,56 +1727,88 @@
       return '<g transform="translate(' + x + ', ' + y + ')"' + opacityAttr + '>\n' + inner + '\n</g>\n';
     }
 
-    // 4. Frame / Container Node
+    // 4. Frame / Container Node (with glass border stroke-opacity & fill-opacity)
     let fillVal = 'none';
+    let fillOpacityAttr = '';
+    const rawBg = node.backgroundColor || s.backgroundColor;
+
     if (node.fills && node.fills.length > 0) {
       const f = node.fills[0];
       if (f.type === 'SOLID') {
-        fillVal = f.color;
+        const sc = parseSvgColor(f.color);
+        if (sc) {
+          fillVal = sc.hex;
+          if (sc.opacity < 1) fillOpacityAttr = ' fill-opacity="' + sc.opacity + '"';
+        }
       } else if (f.type === 'GRADIENT_LINEAR' && f._svgGradId) {
         fillVal = 'url(#' + f._svgGradId + ')';
       }
-    } else if (node.backgroundColor && node.backgroundColor !== 'transparent' && node.backgroundColor !== 'rgba(0, 0, 0, 0)' && node.backgroundColor !== 'rgba(0,0,0,0)') {
-      fillVal = node.backgroundColor;
-    } else if (s.backgroundColor && s.backgroundColor !== 'transparent' && s.backgroundColor !== 'rgba(0, 0, 0, 0)' && s.backgroundColor !== 'rgba(0,0,0,0)') {
-      fillVal = s.backgroundColor;
+    } else if (rawBg) {
+      const sc = parseSvgColor(rawBg);
+      if (sc) {
+        fillVal = sc.hex;
+        if (sc.opacity < 1) fillOpacityAttr = ' fill-opacity="' + sc.opacity + '"';
+      }
     }
 
     let rx = '';
+    let maxRadius = 0;
     if (node.borderRadius) {
-      const r = Math.max(
+      maxRadius = Math.max(
         node.borderRadius.topLeft || 0,
         node.borderRadius.topRight || 0,
         node.borderRadius.bottomRight || 0,
         node.borderRadius.bottomLeft || 0
       );
-      if (r > 0) {
-        rx = ' rx="' + r + '" ry="' + r + '"';
+      if (maxRadius > 0) {
+        rx = ' rx="' + maxRadius + '" ry="' + maxRadius + '"';
       }
     } else if (s.borderRadius) {
       const numR = parseFloat(s.borderRadius);
       if (!isNaN(numR) && numR > 0) {
+        maxRadius = numR;
         rx = ' rx="' + numR + '" ry="' + numR + '"';
       }
     }
 
     let strokeAttr = '';
+    let rawBorderColor = null;
+    let strokeWidth = 0;
     if (node.strokes && node.strokes.length > 0) {
-      const st = node.strokes[0];
-      strokeAttr = ' stroke="' + st.color + '" stroke-width="' + (st.width || 1) + '"';
+      rawBorderColor = node.strokes[0].color;
+      strokeWidth = node.strokes[0].width || 1;
     } else if (node.border) {
-      const bw = Math.max(node.border.widthTop || 0, node.border.widthRight || 0, node.border.widthBottom || 0, node.border.widthLeft || 0);
-      const bc = node.border.color || node.border.colorTop || '#000000';
-      if (bw > 0 && bc && bc !== 'transparent' && bc !== 'rgba(0, 0, 0, 0)' && bc !== 'rgba(0,0,0,0)') {
-        strokeAttr = ' stroke="' + bc + '" stroke-width="' + bw + '"';
-      }
+      strokeWidth = Math.max(node.border.widthTop || 0, node.border.widthRight || 0, node.border.widthBottom || 0, node.border.widthLeft || 0);
+      rawBorderColor = node.border.color || node.border.colorTop;
     } else if (s.border && s.border.width) {
-      strokeAttr = ' stroke="' + (s.border.color || '#000') + '" stroke-width="' + s.border.width + '"';
+      strokeWidth = s.border.width;
+      rawBorderColor = s.border.color;
+    }
+
+    if (strokeWidth > 0 && rawBorderColor) {
+      const sc = parseSvgColor(rawBorderColor);
+      if (sc) {
+        strokeAttr = ' stroke="' + sc.hex + '" stroke-width="' + strokeWidth + '"';
+        if (sc.opacity < 1) {
+          strokeAttr += ' stroke-opacity="' + sc.opacity + '"';
+        }
+      }
     }
 
     let bgRect = '';
     if (fillVal !== 'none' || strokeAttr) {
-      bgRect = '<rect x="0" y="0" width="' + width + '" height="' + height + '" fill="' + fillVal + '"' + rx + strokeAttr + '/>\n';
+      bgRect = '<rect x="0" y="0" width="' + width + '" height="' + height + '" fill="' + fillVal + '"' + fillOpacityAttr + rx + strokeAttr + '/>\n';
+    }
+
+    // Clip nested content if container has overflow: hidden and rounded corners
+    let frameClipDef = '';
+    let frameClipAttr = '';
+    const hasFrameClip = (node.overflow === 'hidden' || node.overflow === 'clip') && maxRadius > 0;
+    if (hasFrameClip) {
+      clipCounter++;
+      const fClipId = 'zcrap_fclip_' + clipCounter;
+      frameClipDef = '  <defs><clipPath id="' + fClipId + '"><rect x="0" y="0" width="' + width + '" height="' + height + '"' + rx + '/></clipPath></defs>\n';
+      frameClipAttr = ' clip-path="url(#' + fClipId + ')"';
     }
 
     let childrenSvg = '';
@@ -1633,7 +1822,7 @@
       return bgRect + childrenSvg;
     }
 
-    return '<g transform="translate(' + x + ', ' + y + ')"' + opacityAttr + '>\n' + bgRect + childrenSvg + '</g>\n';
+    return '<g transform="translate(' + x + ', ' + y + ')"' + opacityAttr + frameClipAttr + '>\n' + frameClipDef + bgRect + childrenSvg + '</g>\n';
   }
 
   function buildFigmaDirectPastePayload(payload) {
@@ -1643,6 +1832,7 @@
 
     const defs = [];
     gradCounter = 0;
+    clipCounter = 0;
     buildSvgDefs(rootNode, defs);
 
     const body = serializeNodeToFigmaSvg(rootNode, true);
@@ -1664,7 +1854,8 @@
       '<!--zcrap-metadata:' + base64Json + ':zcrap-metadata-->\n' +
       defsStr + body + '</svg>';
   }
-  // Direct Paste Figma Clipboard Writer (writes text/html & text/plain)
+
+    // Direct Paste Figma Clipboard Writer (writes text/html & text/plain)
   async function writeToClipboard(text) {
     try {
       if (navigator.clipboard && window.isSecureContext) {

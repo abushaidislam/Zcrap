@@ -1,8 +1,8 @@
-# ⚡ Zcrap v3.3.0 Pro Layout Engine — Web to Figma Converter (100% Free & Unlimited)
+# ⚡ Zcrap v3.4.0 High-Fidelity Engine — Web to Figma Converter (100% Free & Unlimited)
 
 **Zcrap** is a completely free, open-source alternative to `html.to.design` that converts any live website or web element into editable Figma Auto-Layout layers, fonts, images, gradients, and SVGs with 1:1 precision.
 
-In the `v3.3.0` update, after thoroughly analyzing `html.to.design`'s architecture, professional mechanisms such as **Chrome DevTools Protocol (CDP) bridge activation**, OS-aware platform font detection, secure cross-origin iframe handling, and GSAP/AOS scroll cleaning have been directly implemented. It operates entirely client-side and locally, eliminating the need for cloud credit limits or paid subscriptions.
+In the **v3.4.0** update, after thoroughly analyzing `html.to.design`'s architecture, professional mechanisms such as **Chrome DevTools Protocol (CDP) bridge activation**, OS-aware platform font detection, secure cross-origin iframe handling, and GSAP/AOS scroll cleaning have been directly implemented. It operates entirely client-side and locally, eliminating the need for cloud credit limits or paid subscriptions.
 
 ---
 
@@ -28,33 +28,38 @@ Zcrap/
 
 ---
 
-## 🔬 Mechanisms Added in v3.3.0 Pro Layout Engine:
+## 🔬 Mechanisms Added in v3.4.0 High-Fidelity Engine:
 
-0. **📐 Auto-Layout Pro Default & Multi-line Text Auto-Wrapping:**
+0. **🎯 Circular Avatar ClipPaths, Glass Borders & Exact DOM Word Wrapping:**
+   - Native SVG `<clipPath>` engine for rounded avatars and circular images (including parent `overflow: hidden` detection).
+   - Dedicated `stroke-opacity` and `fill-opacity` parser for dark-mode glass borders (fixing the harsh 100% white stroke issue in Figma).
+   - Exact rendered text line-break detection directly from the live DOM `Range`.
+
+1. **📐 Auto-Layout Pro Default & Multi-line Text Auto-Wrapping:**
    - Dynamic word-wrapping engine based on SVG `<tspan>` to prevent long paragraphs from overflowing onto a single line when pasted directly into Figma.
    - Responsive Auto-Layout engine enabled by default in the plugin, featuring vertical stacking and padding detection for standard HTML block containers.
    - UTF-8 safe metadata encoder/decoder for full Unicode and emoji support.
 
-1. **🛡️ Chrome DevTools Protocol (CDP) Engine:**
+2. **🛡️ Chrome DevTools Protocol (CDP) Engine:**
    - Accesses the browser's low-level rendering kernel to extract real subpixel coordinates and font data.
    - `CSS.getPlatformFontsForNode`: Precisely identifies which font (PostScriptName) was actually rendered on the user's operating system.
 
-2. **⏸️ Animation & Transition Freezer (`__zcrap_anim_pause`):**
+3. **⏸️ Animation & Transition Freezer (`__zcrap_anim_pause`):**
    - Temporarily pauses (`paused !important`) all CSS animations and transitions across the page during scraping, preventing elements from shifting or appearing blurred.
 
-3. **🧩 Inline SVG Sprite & `<use>` Resolution:**
+4. **🧩 Inline SVG Sprite & `<use>` Resolution:**
    - Automatically converts external or hidden `<use href="#id">` sprites used on modern websites (Twitter/X, GitHub, Stripe, Shopify) into inline vector paths so no icons are missed.
 
-4. **🧊 WebGL & Canvas Readback Preservation:**
+5. **🧊 WebGL & Canvas Readback Preservation:**
    - Captures charts, 3D canvases, and graphics immediately after frame draw and converts them into data URLs.
 
-5. **🌐 Deep Shadow DOM & `<slot>` Flattening:**
+6. **🌐 Deep Shadow DOM & `<slot>` Flattening:**
    - Captures open and closed shadow roots as well as slotted elements in modern Web Components with exact parent-child hierarchy.
 
-6. **✂️ Vector Clip-Path Masking (`clip-path`):**
+7. **✂️ Vector Clip-Path Masking (`clip-path`):**
    - Extracts CSS `clip-path: polygon(...)` and SVG clipPath data to convert them into Figma mask and clip frames.
 
-7. **🌈 Native Gradients & Auto-Layout v4:**
+8. **🌈 Native Gradients & Auto-Layout v4:**
    - Converts `linear-gradient` and `radial-gradient` directly into Figma's graphical transformation matrices.
    - Flexbox and CSS Grid automatically convert to Figma's Auto-Layout Wrap.
 
@@ -70,7 +75,7 @@ Zcrap/
    ```
    C:\Users\ASUS\Desktop\Zcrap\extension
    ```
-5. The **Zcrap - Web to Figma (v3.3.0 Pro Layout Engine)** extension will be added to your browser!
+5. The **Zcrap - Web to Figma (v3.4.0 High-Fidelity Engine)** extension will be added to your browser!
 
 ---
 
