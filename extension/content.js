@@ -1641,7 +1641,26 @@
     banner.style.zIndex = '2147483647';
     banner.style.fontFamily = '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
     banner.style.pointerEvents = 'none';
-    banner.innerHTML = '🎯 <b>Zcrap Inspector:</b> Hover & click an element to copy (Press <kbd style="background:#222;padding:2px 6px;border-radius:4px;border:1px solid #444;color:#00F0FF">Esc</kbd> to cancel)';
+
+    // SECURITY: Use safe DOM node construction instead of innerHTML to eliminate DOM XSS risks
+    const bannerTarget = document.createElement('b');
+    bannerTarget.textContent = 'Zcrap Inspector:';
+
+    const bannerKbd = document.createElement('kbd');
+    bannerKbd.style.background = '#222';
+    bannerKbd.style.padding = '2px 6px';
+    bannerKbd.style.borderRadius = '4px';
+    bannerKbd.style.border = '1px solid #444';
+    bannerKbd.style.color = '#00F0FF';
+    bannerKbd.textContent = 'Esc';
+
+    banner.append(
+      '🎯 ',
+      bannerTarget,
+      ' Hover & click an element to copy (Press ',
+      bannerKbd,
+      ' to cancel)'
+    );
     document.body.appendChild(banner);
 
     // Overlay box
