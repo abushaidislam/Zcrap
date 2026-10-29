@@ -203,7 +203,8 @@ async function buildFigmaNode(nodeData, options = {}) {
     const isItalic = nodeData.style?.fontStyle === 'italic';
     const fontStyle = getFontStyle(nodeData.style?.fontWeight, isItalic);
     const targetFamily = nodeData.style?.fontFamily || 'Inter';
-    textNode.fontName = await loadFontSafe(targetFamily, fontStyle, isItalic);
+    const postScriptName = nodeData.postScriptName || nodeData.style?.postScriptName || null;
+    textNode.fontName = await loadFontSafe(targetFamily, fontStyle, isItalic, postScriptName);
 
     textNode.characters = nodeData.text || '';
     if (nodeData.style?.fontSize) {

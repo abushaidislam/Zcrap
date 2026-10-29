@@ -1,0 +1,48 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate-and-package:
+    name: Lint, Validate & Build Artifacts
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Validate Integrity & Syntax
+        run: npm run validate
+
+      - name: Build Extension & Plugin Packages
+        run: npm run build
+
+      - name: Upload Chrome Extension Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: zcrap-chrome-extension
+          path: dist/zcrap-extension.zip
+          retention-days: 14
+
+      - name: Upload Figma Plugin Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: zcrap-figma-plugin
+          path: dist/zcrap-figma-plugin.zip
+          retention-days: 14

@@ -1,0 +1,20 @@
+{
+  "name": "zcrap",
+  "version": "3.2.0",
+  "description": "Zcrap - Web to Figma Converter (Chrome Extension & Figma Plugin)",
+  "private": true,
+  "scripts": {
+    "test": "node scripts/validate.js",
+    "validate": "node scripts/validate.js",
+    "build": "node scripts/package.js",
+    "package": "node scripts/package.js"
+  },
+  "keywords": [
+    "chrome-extension",
+    "figma-plugin",
+    "html-to-figma",
+    "cdp",
+    "web-scraper"
+  ],
+  "license": "MIT"
+}

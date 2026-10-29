@@ -15,13 +15,23 @@ document.addEventListener('DOMContentLoaded', async () => {
     statusDot.style.background = isLoading ? '#F59E0B' : (isSuccess ? '#10B981' : '#0D99FF');
   }
 
-  // Fallback Copy to Clipboard
+  // Direct Paste Figma Clipboard Writer (HTML/SVG Vector + Plain Text)
   async function copyToClipboard(text) {
     if (navigator.clipboard && window.isSecureContext) {
       try {
-        await navigator.clipboard.writeText(text);
+        await navigator.clipboard.write([
+          new ClipboardItem({
+            'text/html': new Blob([text], { type: 'text/html' }),
+            'text/plain': new Blob([text], { type: 'text/plain' })
+          })
+        ]);
         return true;
-      } catch {}
+      } catch (err) {
+        try {
+          await navigator.clipboard.writeText(text);
+          return true;
+        } catch {}
+      }
     }
     const ta = document.createElement('textarea');
     ta.value = text;
@@ -77,30 +87,40 @@ document.addEventListener('DOMContentLoaded', async () => {
   // 1. Capture Full Page (Blue Button)
   btnCopyFull.addEventListener('click', async () => {
     setStatus('🔄 Auto-scrolling & loading lazy content...', true);
+    let tabId = null;
     try {
       const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
       if (!tab?.id) {
         setStatus('No active tab found.');
         return;
       }
+      tabId = tab.id;
 
       await ensureContentScript(tab.id, tab.url);
 
-      chrome.tabs.sendMessage(tab.id, { action: 'capture_full', autoScroll: true }, async (response) => {
+      // Pre-clean JS scroll smoothers (GSAP ScrollSmoother, AOS, Lenis) & attach CDP
+      await chrome.runtime.sendMessage({ action: 'clean_scroll_libraries', tabId }).catch(() => {});
+      await chrome.runtime.sendMessage({ action: 'cdp_attach', tabId }).catch(() => {});
+
+      chrome.tabs.sendMessage(tab.id, { action: 'capture_full', autoScroll: true, useCdp: true }, async (response) => {
+        // Cleanly detach CDP after capture
+        chrome.runtime.sendMessage({ action: 'cdp_detach', tabId }).catch(() => {});
+
         if (chrome.runtime.lastError) {
           setStatus('Error: ' + chrome.runtime.lastError.message);
           return;
         }
 
         if (response && response.success) {
-          const json = response.jsonString || JSON.stringify(response.data);
-          await copyToClipboard(json);
-          setStatus('🎉 Copied! Paste in Figma plugin.', false, true);
+          const directPasteData = response.directPasteSvg || response.jsonString || JSON.stringify(response.data);
+          await copyToClipboard(directPasteData);
+          setStatus('🎉 Copied! Paste directly in Figma (Ctrl+V) — No plugin needed!', false, true);
         } else {
           setStatus('Capture failed: ' + (response?.error || 'Unknown error'));
         }
       });
     } catch (err) {
+      if (tabId) chrome.runtime.sendMessage({ action: 'cdp_detach', tabId }).catch(() => {});
       setStatus('⚠️ ' + err.message);
     }
   });
@@ -114,8 +134,11 @@ document.addEventListener('DOMContentLoaded', async () => {
 
       await ensureContentScript(tab.id, tab.url);
 
+      // Pre-clean JS scroll smoothers
+      await chrome.runtime.sendMessage({ action: 'clean_scroll_libraries', tabId: tab.id }).catch(() => {});
+
       // Send inspect request — content.js handles clipboard & toast on its own
-      chrome.tabs.sendMessage(tab.id, { action: 'start_inspect' });
+      chrome.tabs.sendMessage(tab.id, { action: 'start_inspect', useCdp: true });
 
       // Close popup so user can click element on webpage
       setTimeout(() => window.close(), 150);
@@ -127,13 +150,22 @@ document.addEventListener('DOMContentLoaded', async () => {
   // 3. Record Flow / Download .zcrap File (Dark Button)
   btnDownload.addEventListener('click', async () => {
     setStatus('🔄 Auto-scrolling & generating .zcrap...', true);
+    let tabId = null;
     try {
       const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
       if (!tab?.id) return;
+      tabId = tab.id;
 
       await ensureContentScript(tab.id, tab.url);
 
-      chrome.tabs.sendMessage(tab.id, { action: 'capture_full', autoScroll: true }, (response) => {
+      // Pre-clean JS scroll smoothers & attach CDP
+      await chrome.runtime.sendMessage({ action: 'clean_scroll_libraries', tabId }).catch(() => {});
+      await chrome.runtime.sendMessage({ action: 'cdp_attach', tabId }).catch(() => {});
+
+      chrome.tabs.sendMessage(tab.id, { action: 'capture_full', autoScroll: true, useCdp: true }, (response) => {
+        // Cleanly detach CDP
+        chrome.runtime.sendMessage({ action: 'cdp_detach', tabId }).catch(() => {});
+
         if (chrome.runtime.lastError) {
           setStatus('Error: ' + chrome.runtime.lastError.message);
           return;
@@ -155,6 +187,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
       });
     } catch (err) {
+      if (tabId) chrome.runtime.sendMessage({ action: 'cdp_detach', tabId }).catch(() => {});
       setStatus('⚠️ ' + err.message);
     }
   });

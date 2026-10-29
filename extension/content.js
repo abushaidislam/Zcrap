@@ -25,6 +25,36 @@
     return str;
   }
 
+  // --- 0. OS-Aware Platform Font Normalizer ---
+  function resolvePlatformFontFamily(rawFamily) {
+    if (!rawFamily || typeof rawFamily !== 'string') return 'Inter';
+    const families = rawFamily.split(',').map(f => f.replace(/['"]/g, '').trim()).filter(Boolean);
+    const isWindows = /windows/i.test(navigator.userAgent);
+    const isMac = /macintosh|mac os x/i.test(navigator.userAgent);
+
+    for (const fam of families) {
+      const lower = fam.toLowerCase();
+      // Skip generic CSS keywords
+      if (['sans-serif', 'serif', 'monospace', 'cursive', 'fantasy', 'system-ui', 'inherit', 'initial', 'unset'].includes(lower)) {
+        continue;
+      }
+      // Map system font aliases to actual OS rendered fonts
+      if (lower === '-apple-system' || lower === 'blinkmacsystemfont') {
+        if (isMac) return 'Inter';
+        if (isWindows) return 'Segoe UI';
+        return 'Roboto';
+      }
+      // Check if browser has access to this font face
+      try {
+        if (document.fonts && typeof document.fonts.check === 'function' && document.fonts.check(`12px "${fam}"`)) {
+          return fam;
+        }
+      } catch {}
+      return fam;
+    }
+    return isWindows ? 'Segoe UI' : (isMac ? 'Inter' : 'Roboto');
+  }
+
   // --- 1. Animation Freezing Engine (html.to.design CDP style) ---
   function pauseAnimations() {
     let style = document.getElementById('__zcrap_anim_pause');
@@ -356,7 +386,7 @@
           text: textContent.trim(),
           style: {
             color: pStyle.color,
-            fontFamily: pStyle.fontFamily.split(',')[0].replace(/['"]/g, '').trim(),
+            fontFamily: resolvePlatformFontFamily(pStyle.fontFamily),
             fontSize,
             fontWeight: pStyle.fontWeight || '400',
             fontStyle: pStyle.fontStyle || 'normal',
@@ -701,8 +731,9 @@
       isFullHeight
     };
 
-    // 0. Same-Origin Iframe Serialization
+    // 0. Same-Origin & Cross-Origin Iframe Serialization
     if (tagName === 'iframe') {
+      let isCrossOrigin = false;
       try {
         const doc = el.contentDocument;
         if (doc && doc.body) {
@@ -715,8 +746,46 @@
             if (href) iframeRoot.href = href;
             return iframeRoot;
           }
+        } else {
+          isCrossOrigin = true;
         }
-      } catch (err) {}
+      } catch (err) {
+        isCrossOrigin = true;
+      }
+
+      if (isCrossOrigin && bounds.width > 15 && bounds.height > 15) {
+        const frameTitle = el.title || el.name || el.getAttribute('aria-label') || 'Embedded Frame';
+        return {
+          type: 'frame',
+          name: `[IFrame: ${truncate(frameTitle, 24)}]`,
+          bounds,
+          isAbsolute,
+          flexChild,
+          style: {
+            backgroundColor: '#F8FAFC',
+            borderRadius: parsePx(style.borderRadius) || 4,
+            border: '1px solid #CBD5E1'
+          },
+          fills: [{ type: 'SOLID', color: '#F8FAFC', opacity: 1 }],
+          strokes: [{ color: '#CBD5E1', width: 1 }],
+          children: [{
+            type: 'text',
+            name: 'IFrame Notice',
+            bounds: { x: bounds.x + 8, y: bounds.y + Math.max(8, bounds.height / 2 - 10), width: Math.max(20, bounds.width - 16), height: 20 },
+            isAbsolute: false,
+            text: `🔒 [IFrame]: ${truncate(frameTitle, 30)}`,
+            isSingleLine: true,
+            style: {
+              color: '#64748B',
+              fontFamily: 'Inter',
+              fontSize: 11,
+              fontWeight: '500',
+              textAlign: 'center'
+            },
+            opacity: 1
+          }]
+        };
+      }
     }
 
     // 1. Handle SVG Elements (Smart Icon Naming & Inlined <use> References)
@@ -914,7 +983,7 @@
           isSingleLine,
           style: {
             color: style.color,
-            fontFamily: style.fontFamily.split(',')[0].replace(/['"]/g, '').trim(),
+            fontFamily: resolvePlatformFontFamily(style.fontFamily),
             fontSize,
             fontWeight: style.fontWeight || '400',
             fontStyle: style.fontStyle || 'normal',
@@ -964,7 +1033,7 @@
           isSingleLine: height <= fontSize * 1.6,
           style: {
             color: style.color,
-            fontFamily: style.fontFamily.split(',')[0].replace(/['"]/g, '').trim(),
+            fontFamily: resolvePlatformFontFamily(style.fontFamily),
             fontSize,
             fontWeight: style.fontWeight || '400',
             fontStyle: style.fontStyle || 'normal',
@@ -1024,7 +1093,7 @@
                 isSingleLine,
                 style: {
                   color: style.color,
-                  fontFamily: style.fontFamily.split(',')[0].replace(/['"]/g, '').trim(),
+                  fontFamily: resolvePlatformFontFamily(style.fontFamily),
                   fontSize,
                   fontWeight: style.fontWeight || '400',
                   fontStyle: style.fontStyle || 'normal',
@@ -1063,7 +1132,7 @@
             isSingleLine: true,
             style: {
               color: isPlaceholder ? 'rgba(156, 163, 175, 0.8)' : style.color,
-              fontFamily: style.fontFamily.split(',')[0].replace(/['"]/g, '').trim(),
+              fontFamily: resolvePlatformFontFamily(style.fontFamily),
               fontSize: parsePx(style.fontSize) || 14,
               fontWeight: style.fontWeight || '400',
               fontStyle: style.fontStyle || 'normal',
@@ -1352,14 +1421,183 @@
     return { initialX, initialY };
   }
 
-  // Clipboard Writer
+
+  // --- 4. Direct Figma Canvas Vector Serializer (Ctrl+V without Plugin) ---
+  function escapeXml(str) {
+    if (!str) return '';
+    return String(str)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&apos;');
+  }
+
+  function angleToSvgCoords(angleDeg) {
+    const rad = (angleDeg - 90) * (Math.PI / 180);
+    return {
+      x1: Math.round(50 - Math.cos(rad) * 50) + '%',
+      y1: Math.round(50 - Math.sin(rad) * 50) + '%',
+      x2: Math.round(50 + Math.cos(rad) * 50) + '%',
+      y2: Math.round(50 + Math.sin(rad) * 50) + '%'
+    };
+  }
+
+  let gradCounter = 0;
+  function buildSvgDefs(node, defsMap) {
+    if (!node) return;
+    if (node.fills && Array.isArray(node.fills)) {
+      for (const fill of node.fills) {
+        if (fill.type === 'GRADIENT_LINEAR' && fill.stops) {
+          const id = 'zcrap_lin_grad_' + (++gradCounter);
+          const coords = angleToSvgCoords(fill.angle || 180);
+          let stops = '';
+          for (const s of fill.stops) {
+            const stopOp = s.opacity !== undefined ? ' stop-opacity="' + s.opacity + '"' : '';
+            stops += '    <stop offset="' + Math.round(s.position * 100) + '%" stop-color="' + s.color + '"' + stopOp + '/>\n';
+          }
+          defsMap.push('  <linearGradient id="' + id + '" x1="' + coords.x1 + '" y1="' + coords.y1 + '" x2="' + coords.x2 + '" y2="' + coords.y2 + '">\n' + stops + '  </linearGradient>');
+          fill._svgGradId = id;
+        }
+      }
+    }
+    if (node.children && Array.isArray(node.children)) {
+      for (const child of node.children) {
+        buildSvgDefs(child, defsMap);
+      }
+    }
+  }
+
+  function serializeNodeToFigmaSvg(node, isRoot) {
+    if (!node || !node.bounds) return '';
+    const { x, y, width, height } = node.bounds;
+    const s = node.style || {};
+    const opacityAttr = node.opacity !== undefined && node.opacity !== 1 ? ' opacity="' + node.opacity + '"' : '';
+
+    // 1. Text Node
+    if (node.type === 'text') {
+      const text = escapeXml(node.text || '');
+      const color = s.color || '#000000';
+      const fontSize = s.fontSize || 14;
+      const fontFamily = s.fontFamily || 'Inter, -apple-system, sans-serif';
+      const fontWeight = s.fontWeight || '400';
+      const textY = Math.round(fontSize * 0.85);
+
+      let textAnchor = '';
+      let textX = 0;
+      if (s.textAlign === 'center') {
+        textAnchor = ' text-anchor="middle"';
+        textX = Math.round(width / 2);
+      } else if (s.textAlign === 'right') {
+        textAnchor = ' text-anchor="end"';
+        textX = width;
+      }
+
+      return '<g transform="translate(' + x + ', ' + y + ')"' + opacityAttr + '>\n' +
+        '  <text x="' + textX + '" y="' + textY + '" font-family="' + escapeXml(fontFamily) + '" font-size="' + fontSize + '" font-weight="' + fontWeight + '" fill="' + color + '"' + textAnchor + '>' + text + '</text>\n' +
+        '</g>\n';
+    }
+
+    // 2. Image Node
+    if (node.type === 'image' && node.src) {
+      return '<g transform="translate(' + x + ', ' + y + ')"' + opacityAttr + '>\n' +
+        '  <image href="' + escapeXml(node.src) + '" x="0" y="0" width="' + width + '" height="' + height + '" preserveAspectRatio="none"/>\n' +
+        '</g>\n';
+    }
+
+    // 3. Raw SVG Node
+    if (node.type === 'svg' && node.svgContent) {
+      const inner = node.svgContent
+        .replace(/<\?xml[^>]*\?>/gi, '')
+        .replace(/<svg[^>]*>/i, '')
+        .replace(/<\/svg>/i, '');
+      return '<g transform="translate(' + x + ', ' + y + ')"' + opacityAttr + '>\n' + inner + '\n</g>\n';
+    }
+
+    // 4. Frame / Container Node
+    let fillVal = 'none';
+    if (node.fills && node.fills.length > 0) {
+      const f = node.fills[0];
+      if (f.type === 'SOLID') {
+        fillVal = f.color;
+      } else if (f.type === 'GRADIENT_LINEAR' && f._svgGradId) {
+        fillVal = 'url(#' + f._svgGradId + ')';
+      }
+    } else if (s.backgroundColor && s.backgroundColor !== 'transparent') {
+      fillVal = s.backgroundColor;
+    }
+
+    const rx = s.borderRadius ? ' rx="' + s.borderRadius + '" ry="' + s.borderRadius + '"' : '';
+    let strokeAttr = '';
+    if (node.strokes && node.strokes.length > 0) {
+      const st = node.strokes[0];
+      strokeAttr = ' stroke="' + st.color + '" stroke-width="' + (st.width || 1) + '"';
+    } else if (s.border && s.border.width) {
+      strokeAttr = ' stroke="' + (s.border.color || '#000') + '" stroke-width="' + s.border.width + '"';
+    }
+
+    let bgRect = '';
+    if (fillVal !== 'none' || strokeAttr) {
+      bgRect = '<rect x="0" y="0" width="' + width + '" height="' + height + '" fill="' + fillVal + '"' + rx + strokeAttr + '/>\n';
+    }
+
+    let childrenSvg = '';
+    if (node.children && Array.isArray(node.children)) {
+      for (const child of node.children) {
+        childrenSvg += serializeNodeToFigmaSvg(child, false);
+      }
+    }
+
+    if (isRoot) {
+      return bgRect + childrenSvg;
+    }
+
+    return '<g transform="translate(' + x + ', ' + y + ')"' + opacityAttr + '>\n' + bgRect + childrenSvg + '</g>\n';
+  }
+
+  function buildFigmaDirectPastePayload(payload) {
+    const rootNode = payload.rootNode;
+    const width = Math.max(10, rootNode.bounds.width);
+    const height = Math.max(10, rootNode.bounds.height);
+
+    const defs = [];
+    gradCounter = 0;
+    buildSvgDefs(rootNode, defs);
+
+    const body = serializeNodeToFigmaSvg(rootNode, true);
+    const defsStr = defs.length > 0 ? '<defs>\n' + defs.join('\n') + '\n</defs>\n' : '';
+
+    const jsonStr = JSON.stringify(payload);
+    let base64Json = '';
+    try {
+      base64Json = btoa(unescape(encodeURIComponent(jsonStr)));
+    } catch {
+      base64Json = btoa(jsonStr.slice(0, 1000));
+    }
+
+    return '<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="' + width + '" height="' + height + '" viewBox="0 0 ' + width + ' ' + height + '">\n' +
+      '<!--zcrap-metadata:' + base64Json + ':zcrap-metadata-->\n' +
+      defsStr + body + '</svg>';
+  }
+
+  // Direct Paste Figma Clipboard Writer (writes text/html & text/plain)
   async function writeToClipboard(text) {
     try {
       if (navigator.clipboard && window.isSecureContext) {
-        await navigator.clipboard.writeText(text);
+        await navigator.clipboard.write([
+          new ClipboardItem({
+            'text/html': new Blob([text], { type: 'text/html' }),
+            'text/plain': new Blob([text], { type: 'text/plain' })
+          })
+        ]);
         return true;
       }
-    } catch {}
+    } catch (e) {
+      try {
+        await navigator.clipboard.writeText(text);
+        return true;
+      } catch {}
+    }
     try {
       const ta = document.createElement('textarea');
       ta.value = text;
@@ -1510,15 +1748,16 @@
 
           const payload = capturePage(document.body);
           const json = JSON.stringify(payload);
-          await writeToClipboard(json);
-          showToast('⚡ Zcrap: Full page captured with 1:1 precision! Paste in Figma.');
+          const directPasteSvg = buildFigmaDirectPastePayload(payload);
+          await writeToClipboard(directPasteSvg);
+          showToast('⚡ Zcrap: Copied! Paste directly in Figma (Ctrl+V) — No plugin needed!');
 
           // Restore original scroll position if scrolled
           if (scrollState) {
             window.scrollTo({ left: scrollState.initialX, top: scrollState.initialY, behavior: 'instant' });
           }
 
-          sendResponse({ success: true, data: payload, jsonString: json });
+          sendResponse({ success: true, data: payload, jsonString: json, directPasteSvg });
         } catch (err) {
           console.error('[Zcrap] Capture error:', err);
           showToast('❌ Capture failed: ' + err.message, false);
@@ -1541,9 +1780,10 @@
         try {
           const payload = capturePage(targetEl);
           const json = JSON.stringify(payload);
-          await writeToClipboard(json);
-          showToast('🎯 Zcrap: Element copied with 1:1 precision! Paste in Figma.');
-          sendResponse({ success: true, data: payload, jsonString: json });
+          const directPasteSvg = buildFigmaDirectPastePayload(payload);
+          await writeToClipboard(directPasteSvg);
+          showToast('🎯 Zcrap: Element copied! Paste directly in Figma (Ctrl+V) — No plugin needed!');
+          sendResponse({ success: true, data: payload, jsonString: json, directPasteSvg });
         } catch (err) {
           console.error('[Zcrap] Element capture error:', err);
           showToast('❌ Element capture failed: ' + err.message, false);

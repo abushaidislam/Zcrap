@@ -1,6 +1,58 @@
-// Zcrap Background Service Worker — Chrome DevTools Protocol (CDP) & Workflow Manager (v3.0.0 Pro)
+// Zcrap Background Service Worker — Chrome DevTools Protocol (CDP) & Workflow Manager (v3.2.0 Pro)
 
 const activeCdpSessions = new Set();
+
+// Reliable Blob to DataURL converter for Service Workers (no FileReader required)
+async function blobToDataUrl(blob) {
+  const buffer = await blob.arrayBuffer();
+  const bytes = new Uint8Array(buffer);
+  let binary = '';
+  const len = bytes.byteLength;
+  for (let i = 0; i < len; i += 8192) {
+    binary += String.fromCharCode.apply(null, bytes.subarray(i, Math.min(i + 8192, len)));
+  }
+  const base64 = btoa(binary);
+  const mimeType = blob.type || 'application/octet-stream';
+  return `data:${mimeType};base64,${base64}`;
+}
+
+// Neutralize problematic smooth-scroll & parallax libraries in MAIN world before capture
+async function neutralizeScrollLibraries(tabId) {
+  try {
+    await chrome.scripting.executeScript({
+      target: { tabId },
+      world: 'MAIN',
+      func: () => {
+        try {
+          if (window.ScrollSmoother) {
+            const s = window.ScrollSmoother.get ? window.ScrollSmoother.get() : window.ScrollSmoother;
+            if (s && typeof s.kill === 'function') {
+              const w = typeof s.wrapper === 'function' ? s.wrapper() : null;
+              s.kill();
+              if (w) {
+                w.style.opacity = '1';
+                w.style.overflow = 'visible';
+                w.style.position = 'static';
+              }
+            }
+          }
+        } catch {}
+        try {
+          if (window.AOS && typeof window.AOS.init === 'function') {
+            window.AOS.init({ once: true, duration: 0 });
+          }
+        } catch {}
+        try {
+          if (window.lenis && typeof window.lenis.destroy === 'function') {
+            window.lenis.destroy();
+          }
+        } catch {}
+      }
+    });
+  } catch (err) {
+    console.debug('[Zcrap] Scroll cleaner notice:', err);
+  }
+}
 
 // Safely attach Chrome DevTools Protocol to target tab
 async function attachCdp(tabId) {
@@ -44,6 +96,28 @@ chrome.debugger.onDetach.addListener((source) => {
 // CDP Command Dispatcher for Content Script & Popup
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   const tabId = request.tabId || sender.tab?.id;
+
+  // 0. Neutralize JS Scroll / Parallax libraries
+  if (request.action === 'clean_scroll_libraries') {
+    (async () => {
+      if (tabId) await neutralizeScrollLibraries(tabId);
+      sendResponse({ success: true });
+    })();
+    return true;
+  }
+
+  // 0.1 Discover all sub-frames across domains
+  if (request.action === 'get_all_frames') {
+    (async () => {
+      try {
+        const frames = await chrome.webNavigation.getAllFrames({ tabId });
+        sendResponse({ success: true, frames });
+      } catch (err) {
+        sendResponse({ success: false, error: err.message });
+      }
+    })();
+    return true;
+  }
 
   // 1. Attach CDP Session
   if (request.action === 'cdp_attach') {
@@ -146,12 +220,8 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         try {
           const resp = await fetch(request.url);
           const blob = await resp.blob();
-          const reader = new FileReader();
-          reader.onloadend = () => {
-            const dataUrl = reader.result;
-            sendResponse({ success: true, content: dataUrl, mimeType: blob.type, isDataUrl: true });
-          };
-          reader.readAsDataURL(blob);
+          const dataUrl = await blobToDataUrl(blob);
+          sendResponse({ success: true, content: dataUrl, mimeType: blob.type, isDataUrl: true });
         } catch (fetchErr) {
           sendResponse({ success: false, error: fetchErr.message });
         }
@@ -176,11 +246,8 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         try {
           const resp = await fetch(request.url);
           const blob = await resp.blob();
-          const reader = new FileReader();
-          reader.onloadend = () => {
-            sendResponse({ success: true, content: reader.result, mimeType: blob.type, isDataUrl: true });
-          };
-          reader.readAsDataURL(blob);
+          const dataUrl = await blobToDataUrl(blob);
+          sendResponse({ success: true, content: dataUrl, mimeType: blob.type, isDataUrl: true });
         } catch (fetchErr) {
           sendResponse({ success: false, error: err.message });
         }
