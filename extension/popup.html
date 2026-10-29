@@ -2,6 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Zcrap - Web to Figma</title>
   <link rel="icon" type="image/png" href="icons/icon-32.png">
   <style>
@@ -260,6 +261,7 @@
 
     /* Status Bar */
     .status-bar {
+      user-select: text;
       display: flex;
       align-items: center;
       gap: 7px;
@@ -296,7 +298,7 @@
     <div class="brand">
       <img src="icons/icon-32.png" alt="Zcrap Logo" class="logo-badge">
       <span class="brand-name">Zcrap</span>
-      <span class="version-tag">v3.4.0 High-Fidelity Engine</span>
+      <span class="version-tag">v3.4.1 High-Fidelity Engine</span>
     </div>
     <span class="free-pill">100% Free</span>
   </div>
@@ -313,7 +315,7 @@
           <line x1="8" y1="21" x2="16" y2="21"></line>
           <line x1="12" y1="17" x2="12" y2="21"></line>
         </svg>
-        <span class="label-text" id="browser-width-label">Browser (1482px)</span>
+        <span class="label-text" id="browser-width-label">Browser</span>
       </label>
       <label class="check-item">
         <input type="checkbox" id="vp-1920">
@@ -322,7 +324,7 @@
           <line x1="8" y1="21" x2="16" y2="21"></line>
           <line x1="12" y1="17" x2="12" y2="21"></line>
         </svg>
-        <input type="text" class="px-input" value="1920">
+        <input type="number" class="px-input" min="320" max="3840" value="1920">
         <span class="unit">px</span>
       </label>
       <label class="check-item">
@@ -331,7 +333,7 @@
           <rect x="2" y="4" width="20" height="12" rx="2"></rect>
           <path d="M2 18h20"></path>
         </svg>
-        <input type="text" class="px-input" value="1440">
+        <input type="number" class="px-input" min="320" max="3840" value="1440">
         <span class="unit">px</span>
       </label>
       <label class="check-item">
@@ -340,7 +342,7 @@
           <rect x="4" y="2" width="16" height="20" rx="2"></rect>
           <line x1="12" y1="18" x2="12.01" y2="18"></line>
         </svg>
-        <input type="text" class="px-input" value="1024">
+        <input type="number" class="px-input" min="320" max="3840" value="1024">
         <span class="unit">px</span>
       </label>
       <label class="check-item">
@@ -349,7 +351,7 @@
           <rect x="4" y="2" width="16" height="20" rx="2"></rect>
           <line x1="12" y1="18" x2="12.01" y2="18"></line>
         </svg>
-        <input type="text" class="px-input" value="768">
+        <input type="number" class="px-input" min="320" max="3840" value="768">
         <span class="unit">px</span>
       </label>
       <label class="check-item">
@@ -358,7 +360,7 @@
           <rect x="5" y="2" width="14" height="20" rx="2"></rect>
           <line x1="12" y1="18" x2="12.01" y2="18"></line>
         </svg>
-        <input type="text" class="px-input" value="390">
+        <input type="number" class="px-input" min="320" max="3840" value="390">
         <span class="unit">px</span>
       </label>
     </fieldset>
@@ -367,7 +369,7 @@
     <fieldset class="option-card">
       <legend>Themes</legend>
       <label class="check-item">
-        <input type="checkbox" id="theme-browser" checked>
+        <input type="radio" name="theme-choice" id="theme-browser" value="default" checked>
         <svg class="item-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect>
           <line x1="8" y1="21" x2="16" y2="21"></line>
@@ -376,12 +378,12 @@
         <span class="label-text">Browser theme</span>
       </label>
       <label class="check-item">
-        <input type="checkbox" id="theme-light">
+        <input type="radio" name="theme-choice" id="theme-light" value="light">
         <span style="font-size:12px">☀️</span>
         <span class="label-text">Light</span>
       </label>
       <label class="check-item">
-        <input type="checkbox" id="theme-dark">
+        <input type="radio" name="theme-choice" id="theme-dark" value="dark">
         <span style="font-size:12px">🌙</span>
         <span class="label-text">Dark</span>
       </label>
@@ -393,7 +395,7 @@
     <!-- 1. Capture Full Page (Blue) -->
     <button id="btn-copy-full" class="action-btn btn-blue">
       <div class="btn-icon">
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path>
           <circle cx="12" cy="13" r="4"></circle>
         </svg>
@@ -407,7 +409,7 @@
     <!-- 2. Capture Selection (Yellow) -->
     <button id="btn-inspect" class="action-btn btn-yellow">
       <div class="btn-icon">
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <path d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0zM10 7v6m3-3H7"></path>
         </svg>
       </div>
@@ -420,7 +422,7 @@
     <!-- 3. Record Flow / Download File (Dark) -->
     <button id="btn-download" class="action-btn btn-dark">
       <div class="btn-icon">
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <circle cx="12" cy="12" r="10"></circle>
           <circle cx="12" cy="12" r="4" fill="#EF4444" stroke="#EF4444"></circle>
         </svg>
@@ -434,7 +436,7 @@
     <!-- 4. Screenshot Full Page -->
     <button id="btn-screenshot" class="action-btn btn-outline">
       <div class="btn-icon">
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"></path>
         </svg>
       </div>
@@ -447,7 +449,7 @@
     <!-- 5. Extract Design System -->
     <button id="btn-design-system" class="action-btn btn-outline btn-full">
       <div class="btn-icon">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
           <polyline points="14 2 14 8 20 8"></polyline>
           <line x1="16" y1="13" x2="8" y2="13"></line>

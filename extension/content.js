@@ -82,6 +82,7 @@
     const isWindows = /windows/i.test(navigator.userAgent);
     const isMac = /macintosh|mac os x/i.test(navigator.userAgent);
 
+    let candidate = null;
     for (const fam of families) {
       const lower = fam.toLowerCase();
       // Skip generic CSS keywords
@@ -94,14 +95,15 @@
         if (isWindows) return 'Segoe UI';
         return 'Roboto';
       }
+      if (!candidate) candidate = fam;
       // Check if browser has access to this font face
       try {
         if (document.fonts && typeof document.fonts.check === 'function' && document.fonts.check(`12px "${fam}"`)) {
           return fam;
         }
       } catch {}
-      return fam;
     }
+    if (candidate) return candidate;
     return isWindows ? 'Segoe UI' : (isMac ? 'Inter' : 'Roboto');
   }
 
@@ -252,19 +254,32 @@
   function parseGradient(str) {
     if (!str || !str.includes('-gradient(')) return null;
     try {
-      const isLinear = str.includes('linear-gradient(');
-      const isRadial = str.includes('radial-gradient(');
+      const gradStart = str.search(/(?:repeating-)?(?:linear|radial)-gradient\(/);
+      if (gradStart === -1) return null;
+      const sub = str.slice(gradStart);
+      const isLinear = sub.startsWith('linear-gradient(') || sub.startsWith('repeating-linear-gradient(');
+      const isRadial = sub.startsWith('radial-gradient(') || sub.startsWith('repeating-radial-gradient(');
       if (!isLinear && !isRadial) return null;
 
-      const gradMatch = str.match(/(linear|radial)-gradient\((.*)\)/s);
-      if (!gradMatch) return null;
-
-      const type = gradMatch[1];
-      const inner = gradMatch[2].trim();
+      const type = isLinear ? 'linear' : 'radial';
+      const openParenIdx = sub.indexOf('(');
+      let depth = 1;
+      let inner = '';
+      for (let i = openParenIdx + 1; i < sub.length; i++) {
+        const c = sub[i];
+        if (c === '(') depth++;
+        else if (c === ')') {
+          depth--;
+          if (depth === 0) break;
+        }
+        inner += c;
+      }
+      inner = inner.trim();
+      if (!inner) return null;
 
       // Split arguments respecting inner commas
       const args = [];
-      let depth = 0;
+      depth = 0;
       let current = '';
       for (let i = 0; i < inner.length; i++) {
         const c = inner[i];
@@ -300,7 +315,13 @@
           stopStartIndex = 1;
         }
       } else {
-        stopStartIndex = 1;
+        const firstArg = args[0].toLowerCase();
+        const isShapeOrPosition = firstArg.includes('circle') || firstArg.includes('ellipse') || firstArg.includes(' at ') || firstArg.startsWith('at ');
+        if (isShapeOrPosition) {
+          stopStartIndex = 1;
+        } else {
+          stopStartIndex = 0;
+        }
       }
 
       const stopsRaw = args.slice(stopStartIndex);
@@ -499,8 +520,10 @@
   }
 
   function getCleanSemanticClass(el) {
-    if (!el || typeof el.className !== 'string') return null;
-    const classes = el.className.trim().split(/\s+/);
+    if (!el) return null;
+    const rawClass = typeof el.className === 'string' ? el.className : (el.className?.baseVal || '');
+    if (!rawClass || typeof rawClass !== 'string') return null;
+    const classes = rawClass.trim().split(/\s+/);
     for (const cls of classes) {
       if (!cls || cls.length < 2) continue;
       if (UTILITY_CLASS_REGEX.test(cls)) continue;
@@ -698,6 +721,7 @@
 
     // Find links or child spans with different colors or font weights
     const children = el.querySelectorAll('*');
+    let searchOffset = 0;
     for (let i = 0; i < children.length; i++) {
       const child = children[i];
       const cText = (child.innerText || child.textContent || '').trim();
@@ -710,15 +734,21 @@
       const href = linkEl ? (linkEl.href || linkEl.getAttribute('href')) : null;
 
       if (isDiffColor || isDiffWeight || href) {
-        const start = rawText.indexOf(cText);
-        const end = start + cText.length;
-        ranges.push({
-          start,
-          end,
-          color: isDiffColor ? cStyle.color : null,
-          fontWeight: isDiffWeight ? cStyle.fontWeight : null,
-          href
-        });
+        let start = rawText.indexOf(cText, searchOffset);
+        if (start === -1) {
+          start = rawText.indexOf(cText);
+        }
+        if (start !== -1) {
+          const end = start + cText.length;
+          searchOffset = end;
+          ranges.push({
+            start,
+            end,
+            color: isDiffColor ? cStyle.color : null,
+            fontWeight: isDiffWeight ? cStyle.fontWeight : null,
+            href
+          });
+        }
       }
     }
 
@@ -741,12 +771,19 @@
     }
 
     const style = window.getComputedStyle(el);
-    if (
-      style.display === 'none' ||
-      style.visibility === 'hidden' ||
-      parseFloat(style.opacity) === 0
-    ) {
+    if (style.display === 'none' || parseFloat(style.opacity) === 0) {
       return null;
+    }
+    if (style.visibility === 'hidden') {
+      let hasVisibleChild = false;
+      const allDescendants = el.querySelectorAll('*');
+      for (let i = 0; i < Math.min(allDescendants.length, 25); i++) {
+        if (window.getComputedStyle(allDescendants[i]).visibility === 'visible') {
+          hasVisibleChild = true;
+          break;
+        }
+      }
+      if (!hasVisibleChild) return null;
     }
 
     const rect = el.getBoundingClientRect();
@@ -821,7 +858,7 @@
           children: [{
             type: 'text',
             name: 'IFrame Notice',
-            bounds: { x: bounds.x + 8, y: bounds.y + Math.max(8, bounds.height / 2 - 10), width: Math.max(20, bounds.width - 16), height: 20 },
+            bounds: { x: 8, y: Math.max(8, Math.round(bounds.height / 2 - 10)), width: Math.max(20, bounds.width - 16), height: 20 },
             isAbsolute: false,
             text: `🔒 [IFrame]: ${truncate(frameTitle, 30)}`,
             isSingleLine: true,
@@ -1349,7 +1386,7 @@
       flexWrap: style.flexWrap,
       justifyContent: style.justifyContent,
       alignItems: style.alignItems,
-      gap: parsePx(style.gap || style.columnGap),
+      gap: parsePx(style.columnGap || style.gap),
       gapY: parsePx(style.rowGap || style.gap),
       paddingTop: parsePx(style.paddingTop),
       paddingRight: parsePx(style.paddingRight),
@@ -1551,6 +1588,25 @@
   }
 
 
+  // Helper for generating precise SVG Path for asymmetric rounded corners
+  function buildRoundedRectSvgPath(x, y, w, h, tl, tr, br, bl) {
+    const maxR = Math.min(w / 2, h / 2);
+    tl = Math.max(0, Math.min(tl, maxR));
+    tr = Math.max(0, Math.min(tr, maxR));
+    br = Math.max(0, Math.min(br, maxR));
+    bl = Math.max(0, Math.min(bl, maxR));
+    return 'M ' + (x + tl) + ' ' + y +
+      ' H ' + (x + w - tr) +
+      (tr > 0 ? ' A ' + tr + ' ' + tr + ' 0 0 1 ' + (x + w) + ' ' + (y + tr) : '') +
+      ' V ' + (y + h - br) +
+      (br > 0 ? ' A ' + br + ' ' + br + ' 0 0 1 ' + (x + w - br) + ' ' + (y + h) : '') +
+      ' H ' + (x + bl) +
+      (bl > 0 ? ' A ' + bl + ' ' + bl + ' 0 0 1 ' + x + ' ' + (y + h - bl) : '') +
+      ' V ' + (y + tl) +
+      (tl > 0 ? ' A ' + tl + ' ' + tl + ' 0 0 1 ' + (x + tl) + ' ' + y : '') +
+      ' Z';
+  }
+
   // --- 4. Direct Figma Canvas Vector Serializer (Ctrl+V without Plugin) ---
   function escapeXml(str) {
     if (!str) return '';
@@ -1718,9 +1774,10 @@
         '</g>\n';
     }
 
-    // 3. Raw SVG Node
-    if (node.type === 'svg' && node.svgContent) {
-      const inner = node.svgContent
+    // 3. Raw SVG Node (Direct Vector Output)
+    const rawSvg = node.svg || node.svgContent;
+    if (node.type === 'svg' && rawSvg) {
+      const inner = rawSvg
         .replace(/<\?xml[^>]*\?>/gi, '')
         .replace(/<svg[^>]*>/i, '')
         .replace(/<\/svg>/i, '');
@@ -1753,15 +1810,20 @@
 
     let rx = '';
     let maxRadius = 0;
+    let isAsymmetric = false;
+    let tl = 0, tr = 0, br = 0, bl = 0;
     if (node.borderRadius) {
-      maxRadius = Math.max(
-        node.borderRadius.topLeft || 0,
-        node.borderRadius.topRight || 0,
-        node.borderRadius.bottomRight || 0,
-        node.borderRadius.bottomLeft || 0
-      );
+      tl = node.borderRadius.topLeft || 0;
+      tr = node.borderRadius.topRight || 0;
+      br = node.borderRadius.bottomRight || 0;
+      bl = node.borderRadius.bottomLeft || 0;
+      maxRadius = Math.max(tl, tr, br, bl);
       if (maxRadius > 0) {
-        rx = ' rx="' + maxRadius + '" ry="' + maxRadius + '"';
+        if (tl === tr && tr === br && br === bl) {
+          rx = ' rx="' + maxRadius + '" ry="' + maxRadius + '"';
+        } else {
+          isAsymmetric = true;
+        }
       }
     } else if (s.borderRadius) {
       const numR = parseFloat(s.borderRadius);
@@ -1797,7 +1859,12 @@
 
     let bgRect = '';
     if (fillVal !== 'none' || strokeAttr) {
-      bgRect = '<rect x="0" y="0" width="' + width + '" height="' + height + '" fill="' + fillVal + '"' + fillOpacityAttr + rx + strokeAttr + '/>\n';
+      if (isAsymmetric) {
+        const pathData = buildRoundedRectSvgPath(0, 0, width, height, tl, tr, br, bl);
+        bgRect = '<path d="' + pathData + '" fill="' + fillVal + '"' + fillOpacityAttr + strokeAttr + '/>\n';
+      } else {
+        bgRect = '<rect x="0" y="0" width="' + width + '" height="' + height + '" fill="' + fillVal + '"' + fillOpacityAttr + rx + strokeAttr + '/>\n';
+      }
     }
 
     // Clip nested content if container has overflow: hidden and rounded corners
@@ -1837,6 +1904,18 @@
 
     const body = serializeNodeToFigmaSvg(rootNode, true);
     const defsStr = defs.length > 0 ? '<defs>\n' + defs.join('\n') + '\n</defs>\n' : '';
+
+    // Strip temporary private properties before serialization
+    function cleanPrivateProps(n) {
+      if (!n) return;
+      if (n.fills && Array.isArray(n.fills)) {
+        for (const f of n.fills) if (f && f._svgGradId) delete f._svgGradId;
+      }
+      if (n.children && Array.isArray(n.children)) {
+        for (const c of n.children) cleanPrivateProps(c);
+      }
+    }
+    cleanPrivateProps(rootNode);
 
     const jsonStr = JSON.stringify(payload);
     let base64Json = '';

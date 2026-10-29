@@ -1,4 +1,4 @@
-// Zcrap Popup Script - html.to.design style UI & Features
+// Zcrap Popup Script - html.to.design style UI & Features (v3.4.1 Pro)
 document.addEventListener('DOMContentLoaded', async () => {
   const btnCopyFull = document.getElementById('btn-copy-full');
   const btnInspect = document.getElementById('btn-inspect');
@@ -9,10 +9,22 @@ document.addEventListener('DOMContentLoaded', async () => {
   const statusDot = document.getElementById('status-dot');
   const browserWidthLabel = document.getElementById('browser-width-label');
 
+  let activeTimeout = null;
+
   function setStatus(text, isLoading = false, isSuccess = false) {
+    if (activeTimeout) {
+      clearTimeout(activeTimeout);
+      activeTimeout = null;
+    }
     statusText.textContent = text;
     statusDot.className = 'status-dot' + (isLoading ? ' loading' : '');
     statusDot.style.background = isLoading ? '#F59E0B' : (isSuccess ? '#10B981' : '#0D99FF');
+
+    if (isLoading) {
+      activeTimeout = setTimeout(() => {
+        setStatus('⚠️ Operation is taking longer than usual. Please refresh the tab if stuck.');
+      }, 45000);
+    }
   }
 
   // Direct Paste Figma Clipboard Writer (HTML/SVG Vector + Plain Text)
@@ -50,10 +62,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
   }
 
-  // Ensure content script is active on tab
+  // Ensure content script is active on tab with verification retry loop
   async function ensureContentScript(tabId, tabUrl) {
-    if (!tabUrl || tabUrl.startsWith('chrome://') || tabUrl.startsWith('edge://') || tabUrl.startsWith('chrome-extension://') || tabUrl.startsWith('about:') || tabUrl.includes('chromewebstore.google.com')) {
-      throw new Error('Chrome blocks extensions on internal pages. Open any normal site (e.g. google.com, stripe.com).');
+    if (!tabUrl || tabUrl.startsWith('chrome://') || tabUrl.startsWith('edge://') || tabUrl.startsWith('brave://') || tabUrl.startsWith('opera://') || tabUrl.startsWith('chrome-extension://') || tabUrl.startsWith('about:') || tabUrl.includes('chromewebstore.google.com')) {
+      throw new Error('Chrome blocks extensions on internal/system pages. Open any normal site (e.g. google.com, stripe.com).');
     }
 
     try {
@@ -66,19 +78,90 @@ document.addEventListener('DOMContentLoaded', async () => {
       target: { tabId },
       files: ['content.js']
     });
-    await new Promise(r => setTimeout(r, 120));
+
+    for (let i = 0; i < 5; i++) {
+      await new Promise(r => setTimeout(r, 80));
+      try {
+        const ping = await chrome.tabs.sendMessage(tabId, { action: 'ping' });
+        if (ping?.pong) return true;
+      } catch {}
+    }
     return true;
+  }
+
+  // Read user theme choice (Browser / Light / Dark)
+  function getSelectedTheme() {
+    const dark = document.getElementById('theme-dark');
+    const light = document.getElementById('theme-light');
+    if (dark?.checked) return 'dark';
+    if (light?.checked) return 'light';
+    return 'default';
+  }
+
+  // Read user viewport selection
+  function getSelectedViewportWidth() {
+    const vpBrowser = document.getElementById('vp-browser');
+    if (vpBrowser?.checked) return null;
+    const checks = [
+      { id: 'vp-1920', val: 1920 },
+      { id: 'vp-1440', val: 1440 },
+      { id: 'vp-1024', val: 1024 },
+      { id: 'vp-768', val: 768 },
+      { id: 'vp-390', val: 390 }
+    ];
+    for (const c of checks) {
+      const el = document.getElementById(c.id);
+      if (el?.checked) {
+        const input = el.parentElement?.querySelector('.px-input');
+        const customVal = parseInt(input?.value, 10);
+        return (!isNaN(customVal) && customVal > 0) ? customVal : c.val;
+      }
+    }
+    return null;
+  }
+
+  // Viewport checkboxes: handle mutual selection
+  const vpCheckboxes = ['vp-browser', 'vp-1920', 'vp-1440', 'vp-1024', 'vp-768', 'vp-390'];
+  vpCheckboxes.forEach(id => {
+    const el = document.getElementById(id);
+    if (el) {
+      el.addEventListener('change', () => {
+        if (el.checked) {
+          vpCheckboxes.forEach(otherId => {
+            if (otherId !== id) {
+              const other = document.getElementById(otherId);
+              if (other) other.checked = false;
+            }
+          });
+        }
+      });
+    }
+  });
+
+  // Apply CDP theme / viewport emulation if requested
+  async function applyEmulationIfConfigured(tabId) {
+    const theme = getSelectedTheme();
+    const width = getSelectedViewportWidth();
+    if (theme !== 'default' || width) {
+      await chrome.runtime.sendMessage({
+        action: 'cdp_emulate',
+        tabId,
+        width: width || undefined,
+        theme: theme !== 'default' ? theme : undefined,
+        isMobile: Boolean(width && width <= 768)
+      }).catch(() => {});
+    }
   }
 
   // Dynamically update active browser tab width
   try {
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-    if (tab?.id && !tab.url.startsWith('chrome://')) {
+    if (tab?.id && tab.url && !tab.url.startsWith('chrome://') && !tab.url.startsWith('edge://') && !tab.url.startsWith('about:')) {
       const results = await chrome.scripting.executeScript({
         target: { tabId: tab.id },
         func: () => window.innerWidth
-      });
-      if (results && results[0] && results[0].result) {
+      }).catch(() => null);
+      if (results && results[0] && typeof results[0].result === 'number' && results[0].result > 0) {
         browserWidthLabel.textContent = `Browser (${results[0].result}px)`;
       }
     }
@@ -91,7 +174,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     try {
       const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
       if (!tab?.id) {
-        setStatus('No active tab found.');
+        setStatus('⚠️ No active tab found.');
         return;
       }
       tabId = tab.id;
@@ -102,26 +185,29 @@ document.addEventListener('DOMContentLoaded', async () => {
       await chrome.runtime.sendMessage({ action: 'clean_scroll_libraries', tabId }).catch(() => {});
       await chrome.runtime.sendMessage({ action: 'cdp_attach', tabId }).catch(() => {});
 
-      chrome.tabs.sendMessage(tab.id, { action: 'capture_full', autoScroll: true, useCdp: true }, async (response) => {
-        // Cleanly detach CDP after capture
-        chrome.runtime.sendMessage({ action: 'cdp_detach', tabId }).catch(() => {});
+      // Apply theme/viewport emulation if user selected non-default
+      await applyEmulationIfConfigured(tabId);
 
-        if (chrome.runtime.lastError) {
-          setStatus('Error: ' + chrome.runtime.lastError.message);
-          return;
-        }
-
-        if (response && response.success) {
-          const directPasteData = response.directPasteSvg || response.jsonString || JSON.stringify(response.data);
-          await copyToClipboard(directPasteData);
-          setStatus('🎉 Copied! Paste directly in Figma (Ctrl+V) — No plugin needed!', false, true);
-        } else {
-          setStatus('Capture failed: ' + (response?.error || 'Unknown error'));
-        }
+      // Send capture request with Promise-based await
+      const response = await chrome.tabs.sendMessage(tab.id, {
+        action: 'capture_full',
+        autoScroll: true,
+        useCdp: true
       });
+
+      // Detach CDP cleanly
+      await chrome.runtime.sendMessage({ action: 'cdp_detach', tabId }).catch(() => {});
+
+      if (response && response.success) {
+        const directPasteData = response.directPasteSvg || response.jsonString || JSON.stringify(response.data);
+        await copyToClipboard(directPasteData);
+        setStatus('🎉 Copied! Paste directly in Figma (Ctrl+V) — No plugin needed!', false, true);
+      } else {
+        setStatus('Capture failed: ' + (response?.error || 'Unknown error'));
+      }
     } catch (err) {
-      if (tabId) chrome.runtime.sendMessage({ action: 'cdp_detach', tabId }).catch(() => {});
-      setStatus('⚠️ ' + err.message);
+      if (tabId) await chrome.runtime.sendMessage({ action: 'cdp_detach', tabId }).catch(() => {});
+      setStatus('⚠️ ' + (err?.message || 'Capture failed'));
     }
   });
 
@@ -130,20 +216,27 @@ document.addEventListener('DOMContentLoaded', async () => {
     setStatus('Hover & click element to copy...', true);
     try {
       const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-      if (!tab?.id) return;
+      if (!tab?.id) {
+        setStatus('⚠️ No active tab found.');
+        return;
+      }
 
       await ensureContentScript(tab.id, tab.url);
 
       // Pre-clean JS scroll smoothers
       await chrome.runtime.sendMessage({ action: 'clean_scroll_libraries', tabId: tab.id }).catch(() => {});
 
-      // Send inspect request — content.js handles clipboard & toast on its own
-      chrome.tabs.sendMessage(tab.id, { action: 'start_inspect', useCdp: true });
+      // Send inspect request
+      chrome.tabs.sendMessage(tab.id, { action: 'start_inspect', useCdp: true }, () => {
+        if (chrome.runtime.lastError) {
+          console.debug('[Zcrap] Inspect start notice:', chrome.runtime.lastError.message);
+        }
+      });
 
       // Close popup so user can click element on webpage
       setTimeout(() => window.close(), 150);
     } catch (err) {
-      setStatus('⚠️ ' + err.message);
+      setStatus('⚠️ ' + (err?.message || 'Inspect failed'));
     }
   });
 
@@ -153,7 +246,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     let tabId = null;
     try {
       const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-      if (!tab?.id) return;
+      if (!tab?.id) {
+        setStatus('⚠️ No active tab found.');
+        return;
+      }
       tabId = tab.id;
 
       await ensureContentScript(tab.id, tab.url);
@@ -162,33 +258,33 @@ document.addEventListener('DOMContentLoaded', async () => {
       await chrome.runtime.sendMessage({ action: 'clean_scroll_libraries', tabId }).catch(() => {});
       await chrome.runtime.sendMessage({ action: 'cdp_attach', tabId }).catch(() => {});
 
-      chrome.tabs.sendMessage(tab.id, { action: 'capture_full', autoScroll: true, useCdp: true }, (response) => {
-        // Cleanly detach CDP
-        chrome.runtime.sendMessage({ action: 'cdp_detach', tabId }).catch(() => {});
+      await applyEmulationIfConfigured(tabId);
 
-        if (chrome.runtime.lastError) {
-          setStatus('Error: ' + chrome.runtime.lastError.message);
-          return;
-        }
-
-        if (response?.success) {
-          const json = response.jsonString || JSON.stringify(response.data, null, 2);
-          const blob = new Blob([json], { type: 'application/json' });
-          const url = URL.createObjectURL(blob);
-          const a = document.createElement('a');
-          const cleanName = (tab.title || 'page').replace(/[^a-zA-Z0-9_-]/g, '_');
-          a.href = url;
-          a.download = `${cleanName}.zcrap`;
-          a.click();
-          URL.revokeObjectURL(url);
-          setStatus('💾 File downloaded! Drop into Figma plugin.', false, true);
-        } else {
-          setStatus('Failed to export file.');
-        }
+      const response = await chrome.tabs.sendMessage(tab.id, {
+        action: 'capture_full',
+        autoScroll: true,
+        useCdp: true
       });
+
+      await chrome.runtime.sendMessage({ action: 'cdp_detach', tabId }).catch(() => {});
+
+      if (response?.success) {
+        const json = response.jsonString || JSON.stringify(response.data, null, 2);
+        const blob = new Blob([json], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        const cleanName = (tab.title || 'page').replace(/[^a-zA-Z0-9_-]/g, '_');
+        a.href = url;
+        a.download = `${cleanName}.zcrap`;
+        a.click();
+        URL.revokeObjectURL(url);
+        setStatus('💾 File downloaded! Drop into Figma plugin.', false, true);
+      } else {
+        setStatus('Failed to export file: ' + (response?.error || 'Unknown error'));
+      }
     } catch (err) {
-      if (tabId) chrome.runtime.sendMessage({ action: 'cdp_detach', tabId }).catch(() => {});
-      setStatus('⚠️ ' + err.message);
+      if (tabId) await chrome.runtime.sendMessage({ action: 'cdp_detach', tabId }).catch(() => {});
+      setStatus('⚠️ ' + (err?.message || 'Download failed'));
     }
   });
 
@@ -197,7 +293,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     setStatus('Capturing high-res PNG...', true);
     try {
       const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-      if (!tab?.id) return;
+      if (!tab?.id) {
+        setStatus('⚠️ No active tab found.');
+        return;
+      }
 
       const dataUrl = await chrome.tabs.captureVisibleTab(null, { format: 'png' });
       if (dataUrl) {
@@ -207,9 +306,11 @@ document.addEventListener('DOMContentLoaded', async () => {
         a.download = `${cleanName}.png`;
         a.click();
         setStatus('📷 Screenshot saved to Downloads!', false, true);
+      } else {
+        setStatus('⚠️ Could not capture screenshot.');
       }
     } catch (err) {
-      setStatus('⚠️ ' + err.message);
+      setStatus('⚠️ ' + (err?.message || 'Screenshot failed'));
     }
   });
 
@@ -218,50 +319,43 @@ document.addEventListener('DOMContentLoaded', async () => {
     setStatus('Extracting design tokens...', true);
     try {
       const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-      if (!tab?.id) return;
+      if (!tab?.id) {
+        setStatus('⚠️ No active tab found.');
+        return;
+      }
 
       await ensureContentScript(tab.id, tab.url);
 
-      chrome.tabs.sendMessage(tab.id, { action: 'capture_full' }, async (response) => {
-        if (chrome.runtime.lastError) {
-          setStatus('Error: ' + chrome.runtime.lastError.message);
-          return;
+      const response = await chrome.tabs.sendMessage(tab.id, { action: 'capture_full', autoScroll: false });
+      if (response && response.success && response.data?.rootNode) {
+        const colors = new Set();
+        const fonts = new Set();
+
+        function walk(n) {
+          if (!n) return;
+          if (n.backgroundColor) colors.add(n.backgroundColor);
+          if (n.style?.color) colors.add(n.style.color);
+          if (n.style?.fontFamily) fonts.add(n.style.fontFamily);
+          if (n.children) n.children.forEach(walk);
         }
-        if (response && response.success) {
-          const colors = new Set();
-          const fonts = new Set();
+        walk(response.data.rootNode);
 
-          function walk(n) {
-            if (!n) return;
-            if (n.backgroundColor) colors.add(n.backgroundColor);
-            if (n.style?.color) colors.add(n.style.color);
-            if (n.style?.fontFamily) fonts.add(n.style.fontFamily);
-            if (n.children) n.children.forEach(walk);
-          }
-          walk(response.data.rootNode);
+        const tokens = {
+          appName: 'Zcrap Design System',
+          pageTitle: response.data.title || 'Page',
+          url: response.data.url || '',
+          colorPalette: Array.from(colors),
+          typography: Array.from(fonts)
+        };
 
-          const tokens = {
-            appName: 'Zcrap Design System',
-            pageTitle: response.data.title,
-            url: response.data.url,
-            colorPalette: Array.from(colors),
-            typography: Array.from(fonts)
-          };
-
-          const json = JSON.stringify(tokens, null, 2);
-          await copyToClipboard(json);
-          setStatus('🎨 Design tokens copied to clipboard!', false, true);
-        }
-      });
+        const json = JSON.stringify(tokens, null, 2);
+        await copyToClipboard(json);
+        setStatus('🎨 Design tokens copied to clipboard!', false, true);
+      } else {
+        setStatus('⚠️ No structured design tokens found on page.');
+      }
     } catch (err) {
-      setStatus('⚠️ ' + err.message);
-    }
-  });
-
-  // Keyboard shortcut: Alt+Shift+E
-  window.addEventListener('keydown', (e) => {
-    if (e.altKey && e.shiftKey && e.code === 'KeyE') {
-      btnCopyFull.click();
+      setStatus('⚠️ ' + (err?.message || 'Token extraction failed'));
     }
   });
 });

@@ -1,4 +1,4 @@
-// Zcrap Background Service Worker — Chrome DevTools Protocol (CDP) & Workflow Manager (v3.4.0 Pro)
+// Zcrap Background Service Worker — Chrome DevTools Protocol (CDP) & Workflow Manager (v3.4.1 Pro)
 
 const activeCdpSessions = new Set();
 
@@ -54,9 +54,24 @@ async function neutralizeScrollLibraries(tabId) {
   }
 }
 
+// Check if CDP is attached even if Service Worker restarted
+async function isCdpAttached(tabId) {
+  if (!tabId) return false;
+  if (activeCdpSessions.has(tabId)) return true;
+  try {
+    const targets = await chrome.debugger.getTargets();
+    const isAttached = targets.some(t => t.tabId === tabId && t.attached);
+    if (isAttached) {
+      activeCdpSessions.add(tabId);
+      return true;
+    }
+  } catch {}
+  return false;
+}
+
 // Safely attach Chrome DevTools Protocol to target tab
 async function attachCdp(tabId) {
-  if (activeCdpSessions.has(tabId)) return true;
+  if (await isCdpAttached(tabId)) return true;
   try {
     await chrome.debugger.attach({ tabId }, '1.3');
     activeCdpSessions.add(tabId);
@@ -68,6 +83,10 @@ async function attachCdp(tabId) {
     ]);
     return true;
   } catch (err) {
+    if (err && err.message && err.message.includes('Already attached')) {
+      activeCdpSessions.add(tabId);
+      return true;
+    }
     console.warn(`[Zcrap CDP] Failed to attach to tab ${tabId}:`, err);
     return false;
   }
@@ -75,7 +94,7 @@ async function attachCdp(tabId) {
 
 // Safely detach CDP session
 async function detachCdp(tabId) {
-  if (!activeCdpSessions.has(tabId)) return;
+  if (!(await isCdpAttached(tabId))) return;
   try {
     await chrome.debugger.detach({ tabId });
   } catch {}
@@ -83,8 +102,8 @@ async function detachCdp(tabId) {
 }
 
 // Auto cleanup when tab closes or navigates
-chrome.tabs.onRemoved.addListener((tabId) => {
-  activeCdpSessions.delete(tabId);
+chrome.tabs.onRemoved.addListener(async (tabId) => {
+  await detachCdp(tabId);
 });
 
 chrome.debugger.onDetach.addListener((source) => {
@@ -140,7 +159,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   // 3. Get Real OS Platform Fonts for Node (CSS.getPlatformFontsForNode)
   if (request.action === 'cdp_get_platform_fonts') {
     (async () => {
-      if (!tabId || !activeCdpSessions.has(tabId)) {
+      if (!tabId || !(await isCdpAttached(tabId))) {
         sendResponse({ success: false, error: 'CDP not attached' });
         return;
       }
@@ -175,7 +194,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   // 4. Get Box Model with Subpixel Precision (DOM.getBoxModel)
   if (request.action === 'cdp_get_box_model') {
     (async () => {
-      if (!tabId || !activeCdpSessions.has(tabId)) {
+      if (!tabId || !(await isCdpAttached(tabId))) {
         sendResponse({ success: false, error: 'CDP not attached' });
         return;
       }
@@ -195,7 +214,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   // 5. Get Content Quads for Rotated/Transformed Nodes (DOM.getContentQuads)
   if (request.action === 'cdp_get_content_quads') {
     (async () => {
-      if (!tabId || !activeCdpSessions.has(tabId)) {
+      if (!tabId || !(await isCdpAttached(tabId))) {
         sendResponse({ success: false, error: 'CDP not attached' });
         return;
       }
@@ -215,10 +234,16 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   // 6. Direct Resource Extraction from Browser Cache (Bypassing CORS)
   if (request.action === 'cdp_get_resource_content') {
     (async () => {
-      if (!tabId || !activeCdpSessions.has(tabId)) {
+      const url = request.url;
+      if (!url || typeof url !== 'string' || (!url.startsWith('http://') && !url.startsWith('https://') && !url.startsWith('data:'))) {
+        sendResponse({ success: false, error: 'Invalid or unsupported resource URL' });
+        return;
+      }
+
+      if (!tabId || !(await isCdpAttached(tabId))) {
         // Fallback: fetch via background worker (avoids CORS restrictions in extension background)
         try {
-          const resp = await fetch(request.url);
+          const resp = await fetch(url);
           const blob = await resp.blob();
           const dataUrl = await blobToDataUrl(blob);
           sendResponse({ success: true, content: dataUrl, mimeType: blob.type, isDataUrl: true });
@@ -233,7 +258,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         const frameId = request.frameId || tree.frameTree.frame.id;
         const res = await chrome.debugger.sendCommand({ tabId }, 'Page.getResourceContent', {
           frameId,
-          url: request.url
+          url
         });
         sendResponse({
           success: true,
@@ -242,14 +267,14 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
           mimeType: request.mimeType || 'application/octet-stream'
         });
       } catch (err) {
-        // Graceful fallback to background fetch
+        // Graceful fallback to background fetch with exact fetchErr message
         try {
-          const resp = await fetch(request.url);
+          const resp = await fetch(url);
           const blob = await resp.blob();
           const dataUrl = await blobToDataUrl(blob);
           sendResponse({ success: true, content: dataUrl, mimeType: blob.type, isDataUrl: true });
         } catch (fetchErr) {
-          sendResponse({ success: false, error: err.message });
+          sendResponse({ success: false, error: fetchErr.message });
         }
       }
     })();
@@ -259,7 +284,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   // 7. Device Metrics and Color Scheme Emulation (Mobile/Tablet/Dark Mode)
   if (request.action === 'cdp_emulate') {
     (async () => {
-      if (!tabId || !activeCdpSessions.has(tabId)) {
+      if (!tabId || !(await isCdpAttached(tabId))) {
         sendResponse({ success: false, error: 'CDP not attached' });
         return;
       }
@@ -284,6 +309,10 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     })();
     return true;
   }
+
+  // Fallback for unhandled action
+  sendResponse({ success: false, error: 'Unknown action: ' + request.action });
+  return false;
 });
 
 // Keyboard Shortcut: Alt+Shift+E Full Page Capture
@@ -295,24 +324,34 @@ chrome.commands.onCommand.addListener(async (command) => {
         return;
       }
 
-      // Ensure content script is injected
-      try {
-        await chrome.tabs.sendMessage(tab.id, { action: 'ping' });
-      } catch {
-        await chrome.scripting.executeScript({
-          target: { tabId: tab.id },
-          files: ['content.js']
-        });
-        await new Promise(r => setTimeout(r, 150));
+      // Ensure content script is ready with retry loop
+      let ready = false;
+      for (let i = 0; i < 5; i++) {
+        try {
+          const res = await chrome.tabs.sendMessage(tab.id, { action: 'ping' });
+          if (res?.pong) { ready = true; break; }
+        } catch {
+          if (i === 0) {
+            await chrome.scripting.executeScript({
+              target: { tabId: tab.id },
+              files: ['content.js']
+            });
+          }
+          await new Promise(r => setTimeout(r, 100));
+        }
       }
+      if (!ready) return;
 
-      // Optionally attach CDP for maximum fidelity
+      // Clean scroll smoothers & attach CDP
+      await neutralizeScrollLibraries(tab.id);
       await attachCdp(tab.id);
 
       // Trigger full page capture with auto-scroll and animation freezing
-      chrome.tabs.sendMessage(tab.id, { action: 'capture_full', autoScroll: true, useCdp: true }, async () => {
-        // Detach CDP cleanly after capture completes
-        await detachCdp(tab.id);
+      chrome.tabs.sendMessage(tab.id, { action: 'capture_full', autoScroll: true, useCdp: true }, (response) => {
+        if (chrome.runtime.lastError) {
+          console.warn('[Zcrap] Shortcut capture message notice:', chrome.runtime.lastError.message);
+        }
+        detachCdp(tab.id).catch(e => console.warn('[Zcrap] Detach notice:', e));
       });
     } catch (err) {
       console.error('[Zcrap] Shortcut capture error:', err);
