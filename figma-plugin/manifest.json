@@ -1,0 +1,19 @@
+{
+  "name": "Zcrap - HTML to Figma",
+  "id": "137805260747778092",
+  "api": "1.0.0",
+  "main": "code.js",
+  "ui": "ui.html",
+  "editorType": ["figma"],
+  "documentAccess": "dynamic-page",
+  "networkAccess": {
+    "allowedDomains": ["*"],
+    "reasoning": "Allows fetching remote images, SVG vector assets, and web fonts referenced by captured website elements."
+  },
+  "relaunchButtons": [
+    {
+      "command": "open",
+      "name": "Open Zcrap"
+    }
+  ]
+}

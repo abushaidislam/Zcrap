@@ -1,0 +1,44 @@
+{
+  "manifest_version": 3,
+  "name": "Zcrap - Web to Figma",
+  "version": "3.0.0",
+  "description": "Capture any website UI to Figma with 1:1 subpixel precision, Chrome DevTools Protocol (CDP) engine, real OS platform fonts, CSS Gradients, Pseudo-Elements, Glassmorphism & Auto-Layout.",
+  "permissions": [
+    "activeTab",
+    "scripting",
+    "clipboardWrite",
+    "debugger",
+    "downloads"
+  ],
+  "host_permissions": [
+    "<all_urls>"
+  ],
+  "icons": {
+    "16": "icons/icon-16.png",
+    "32": "icons/icon-32.png",
+    "48": "icons/icon-48.png",
+    "128": "icons/icon-128.png"
+  },
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Zcrap Web to Figma (CDP Pro)",
+    "default_icon": {
+      "16": "icons/icon-16.png",
+      "32": "icons/icon-32.png",
+      "48": "icons/icon-48.png",
+      "128": "icons/icon-128.png"
+    }
+  },
+  "commands": {
+    "capture-full-page": {
+      "suggested_key": {
+        "default": "Alt+Shift+E",
+        "mac": "Alt+Shift+E"
+      },
+      "description": "Capture full page for Figma"
+    }
+  },
+  "background": {
+    "service_worker": "background.js"
+  }
+}

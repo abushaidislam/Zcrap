@@ -1,0 +1,401 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Zcrap - HTML to Figma</title>
+  <style>
+    :root {
+      --bg: var(--figma-color-bg, #18191D);
+      --card-bg: var(--figma-color-bg-secondary, #22242B);
+      --border: var(--figma-color-border, #323540);
+      --accent: #0D99FF;
+      --text: var(--figma-color-text, #F1F5F9);
+      --text-muted: var(--figma-color-text-secondary, #94A3B8);
+    }
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      user-select: none;
+    }
+    body {
+      background-color: var(--bg);
+      color: var(--text);
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      height: 100vh;
+    }
+    .header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .logo {
+      width: 26px;
+      height: 26px;
+      border-radius: 6px;
+      display: block;
+      object-fit: contain;
+      box-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
+    }
+    .title {
+      font-size: 15px;
+      font-weight: 700;
+      letter-spacing: -0.3px;
+    }
+    .badge {
+      font-size: 10px;
+      background: #10B98122;
+      color: #10B981;
+      border: 1px solid #10B98144;
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-weight: 600;
+    }
+    .mode-selector {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 4px;
+      display: flex;
+      gap: 4px;
+    }
+    .mode-btn {
+      flex: 1;
+      padding: 8px 6px;
+      border-radius: 6px;
+      border: none;
+      background: transparent;
+      color: var(--text-muted);
+      font-size: 11px;
+      font-weight: 600;
+      cursor: pointer;
+      text-align: center;
+      transition: all 0.15s ease;
+    }
+    .mode-btn.active {
+      background: var(--figma-color-bg, #2D313D);
+      color: var(--accent);
+      box-shadow: 0 1px 3px rgba(0,0,0,0.25);
+    }
+    .btn-paste {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      background: #0D99FF;
+      color: #FFFFFF;
+      font-weight: 700;
+      font-size: 13px;
+      padding: 12px;
+      border-radius: 8px;
+      border: none;
+      cursor: pointer;
+      box-shadow: 0 2px 10px rgba(13, 153, 255, 0.3);
+      transition: all 0.15s ease;
+    }
+        .paste-box {
+      width: 100%;
+      height: 60px;
+      background: var(--card-bg);
+      border: 1px solid var(--accent);
+      border-radius: 8px;
+      color: var(--text);
+      font-size: 11px;
+      padding: 8px 10px;
+      resize: none;
+      outline: none;
+      display: none;
+      box-shadow: 0 0 0 2px rgba(13, 153, 255, 0.2);
+    }
+    .paste-box:focus {
+      border-color: #38BDF8;
+    }
+    .btn-paste:hover {
+      filter: brightness(1.1);
+      transform: translateY(-1px);
+    }
+    .dropzone {
+      border: 2px dashed var(--border);
+      background: var(--card-bg);
+      border-radius: 8px;
+      padding: 24px 16px;
+      text-align: center;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 6px;
+    }
+    .dropzone:hover, .dropzone.dragover {
+      border-color: var(--accent);
+      background: #1B262F;
+    }
+    .drop-icon {
+      font-size: 26px;
+    }
+    .drop-text {
+      font-size: 12px;
+      font-weight: 600;
+      color: #E2E8F0;
+    }
+    .drop-subtext {
+      font-size: 10px;
+      color: var(--text-muted);
+    }
+    .status-area {
+      margin-top: auto;
+      padding: 10px;
+      background: #111215;
+      border-radius: 6px;
+      border: 1px solid var(--border);
+      font-size: 11px;
+      color: var(--text-muted);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .status-indicator {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #3B82F6;
+      flex-shrink: 0;
+    }
+    .status-indicator.pulse {
+      animation: pulse 0.8s infinite alternate;
+      background: #F59E0B;
+    }
+    @keyframes pulse {
+      from { opacity: 0.3; }
+      to { opacity: 1; }
+    }
+    input[type="file"] {
+      display: none;
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <div class="brand">
+      <img class="logo" src="data:image/png;base64,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" alt="Zcrap Logo">
+      <div class="title">Zcrap 1:1 Pro <span style="font-size:10px;font-weight:600;color:#00F0FF;margin-left:4px;background:rgba(0,240,255,0.12);padding:1px 5px;border-radius:4px;border:1px solid rgba(0,240,255,0.3)">v3.0.0 CDP Pro</span></div>
+    </div>
+    <span class="badge">Unlimited Free</span>
+  </div>
+
+  <div class="mode-selector">
+    <button class="mode-btn active" id="mode-pixel">🎯 Pixel-Perfect 1:1</button>
+    <button class="mode-btn" id="mode-auto">📐 Auto-Layout</button>
+  </div>
+
+  <button class="btn-paste" id="btn-paste">
+    <span>📋</span> Paste from Clipboard <span style="font-size:11px;opacity:0.85;font-weight:normal;">(Ctrl+V)</span>
+  </button>
+
+  <textarea id="paste-box" class="paste-box" placeholder="🔒 Direct read restricted. Click here & press Ctrl+V to paste..."></textarea>
+  <div class="dropzone" id="dropzone">
+    <div class="drop-icon">📥</div>
+    <div class="drop-text">Drop .zcrap or .json file here</div>
+    <div class="drop-subtext">or click to browse from computer</div>
+    <input type="file" id="file-input" accept=".zcrap,.json">
+  </div>
+
+  <div class="status-area">
+    <div class="status-indicator" id="status-ind"></div>
+    <span id="status-msg">Ready to import 1:1 design.</span>
+  </div>
+
+  <script>
+    const btnPaste = document.getElementById('btn-paste');
+    const dropzone = document.getElementById('dropzone');
+    const fileInput = document.getElementById('file-input');
+    const modePixel = document.getElementById('mode-pixel');
+    const modeAuto = document.getElementById('mode-auto');
+    const statusMsg = document.getElementById('status-msg');
+    const statusInd = document.getElementById('status-ind');
+
+    let currentLayoutMode = 'pixel-perfect';
+
+    modePixel.addEventListener('click', () => {
+      modePixel.classList.add('active');
+      modeAuto.classList.remove('active');
+      currentLayoutMode = 'pixel-perfect';
+      setStatus('Mode: Pixel-Perfect (exact 1:1 match).');
+    });
+
+    modeAuto.addEventListener('click', () => {
+      modeAuto.classList.add('active');
+      modePixel.classList.remove('active');
+      currentLayoutMode = 'autolayout';
+      setStatus('Mode: Auto-Layout (responsive flow).');
+    });
+
+    function setStatus(text, isLoading = false, isSuccess = false) {
+      statusMsg.textContent = text;
+      statusInd.className = 'status-indicator' + (isLoading ? ' pulse' : '');
+      statusInd.style.background = isLoading ? '#F59E0B' : (isSuccess ? '#10B981' : '#3B82F6');
+    }
+
+    // Convert URL (data: or http:) to Uint8Array
+    async function urlToBytes(url) {
+      if (!url) return null;
+      try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 8000);
+        const res = await fetch(url, { signal: controller.signal });
+        clearTimeout(timeoutId);
+        const buffer = await res.arrayBuffer();
+        return Array.from(new Uint8Array(buffer));
+      } catch {
+        return null;
+      }
+    }
+
+    async function processImages(node) {
+      if (!node) return;
+      if (node.type === 'image' && node.src) {
+        node.imageBytes = await urlToBytes(node.src);
+      }
+      if (node.backgroundImage) {
+        node.bgImageBytes = await urlToBytes(node.backgroundImage);
+      }
+      if (node.children) {
+        for (const child of node.children) {
+          await processImages(child);
+        }
+      }
+    }
+
+    async function handleImport(jsonString) {
+      try {
+        setStatus('Parsing 1:1 payload...', true);
+        const payload = JSON.parse(jsonString);
+
+        if (!payload.rootNode) {
+          throw new Error('Invalid format: Missing rootNode');
+        }
+
+        setStatus('Processing images & styles...', true);
+        await processImages(payload.rootNode);
+
+        setStatus('Building 1:1 Figma layers...', true);
+        parent.postMessage({
+          pluginMessage: {
+            type: 'import-zcrap',
+            data: payload,
+            layoutMode: currentLayoutMode
+          }
+        }, '*');
+      } catch (err) {
+        setStatus('Error: ' + err.message, false, false);
+      }
+    }
+
+        const pasteBox = document.getElementById('paste-box');
+    if (pasteBox) {
+      pasteBox.addEventListener('input', async () => {
+        const val = pasteBox.value;
+        if (val && val.trim().startsWith('{')) {
+          pasteBox.style.display = 'none';
+          await handleImport(val);
+          pasteBox.value = '';
+        }
+      });
+    }
+
+    // Global paste handler: Ctrl+V / Cmd+V anywhere in plugin!
+    window.addEventListener('paste', async (e) => {
+      try {
+        const text = e.clipboardData ? e.clipboardData.getData('text') : null;
+        if (!text || !text.trim().startsWith('{')) {
+          setStatus('Pasted content is not valid Zcrap JSON.', false, false);
+          return;
+        }
+        if (pasteBox) pasteBox.style.display = 'none';
+        await handleImport(text);
+      } catch (err) {
+        setStatus('Paste error: ' + err.message, false, false);
+      }
+    });
+
+    // Paste from clipboard button
+    btnPaste.addEventListener('click', async () => {
+      setStatus('Reading clipboard...', true);
+      try {
+        if (navigator.clipboard && navigator.clipboard.readText) {
+          const text = await navigator.clipboard.readText();
+          if (text && text.trim().startsWith('{')) {
+            if (pasteBox) pasteBox.style.display = 'none';
+            await handleImport(text);
+            return;
+          }
+        }
+      } catch (err) {
+        // Fallback when Figma sandboxed iframe blocks direct clipboard read
+      }
+
+      // If direct read is restricted, activate and focus the paste box
+      if (pasteBox) {
+        pasteBox.style.display = 'block';
+        pasteBox.focus();
+        pasteBox.select();
+      }
+      setStatus('🔒 Figma blocks direct read. Press Ctrl+V (Cmd+V) to paste!', false, false);
+    });
+
+    
+
+    // Drag & Drop handling
+    dropzone.addEventListener('click', () => fileInput.click());
+    fileInput.addEventListener('change', (e) => {
+      const file = e.target.files[0];
+      if (file) readFile(file);
+    });
+
+    dropzone.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      dropzone.classList.add('dragover');
+    });
+
+    dropzone.addEventListener('dragleave', () => {
+      dropzone.classList.remove('dragover');
+    });
+
+    dropzone.addEventListener('drop', (e) => {
+      e.preventDefault();
+      dropzone.classList.remove('dragover');
+      const file = e.dataTransfer.files[0];
+      if (file) readFile(file);
+    });
+
+    function readFile(file) {
+      setStatus(`Reading ${file.name}...`, true);
+      const reader = new FileReader();
+      reader.onload = (e) => handleImport(e.target.result);
+      reader.onerror = () => setStatus('Failed to read file.');
+      reader.readAsText(file);
+    }
+
+    // Listen for completion
+    window.onmessage = (event) => {
+      const msg = event.data.pluginMessage;
+      if (!msg) return;
+      if (msg.type === 'done') {
+        setStatus('🎉 1:1 Design imported to Figma!', false, true);
+      } else if (msg.type === 'error') {
+        setStatus('Import error: ' + msg.message, false, false);
+      }
+    };
+  </script>
+</body>
+</html>

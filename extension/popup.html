@@ -1,0 +1,472 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Zcrap - Web to Figma</title>
+  <link rel="icon" type="image/png" href="icons/icon-32.png">
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+      user-select: none;
+    }
+
+    body {
+      width: 360px;
+      background: #FFFFFF;
+      color: #111827;
+      padding: 16px;
+      font-size: 12px;
+    }
+
+    /* Top Brand Navigation */
+    .top-nav {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 14px;
+      padding-bottom: 8px;
+      border-bottom: 1px solid #F1F5F9;
+    }
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+    }
+    .logo-badge {
+      width: 24px;
+      height: 24px;
+      border-radius: 6px;
+      display: block;
+      object-fit: contain;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
+    }
+    .brand-name {
+      font-size: 15px;
+      font-weight: 700;
+      color: #0F172A;
+      letter-spacing: -0.3px;
+    }
+    .version-tag {
+      font-size: 10px;
+      font-weight: 600;
+      color: #0D99FF;
+      background: #E5F4FF;
+      padding: 1px 5px;
+      border-radius: 4px;
+    }
+    .free-pill {
+      font-size: 10px;
+      font-weight: 600;
+      color: #059669;
+      background: #ECFDF5;
+      padding: 2px 7px;
+      border-radius: 12px;
+      border: 1px solid #A7F3D0;
+    }
+
+    /* Top Options Row (Viewports & Themes) */
+    .options-row {
+      display: grid;
+      grid-template-columns: 1.15fr 0.85fr;
+      gap: 10px;
+      margin-bottom: 14px;
+    }
+
+    .option-card {
+      border: 1px solid #E2E8F0;
+      border-radius: 8px;
+      padding: 6px 10px 8px;
+      background: #FFFFFF;
+    }
+
+    .option-card legend {
+      font-size: 11px;
+      font-weight: 600;
+      color: #475569;
+      padding: 0 4px;
+      margin-left: 4px;
+    }
+
+    .check-item {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin-top: 5px;
+      font-size: 11.5px;
+      color: #1E293B;
+      cursor: pointer;
+    }
+
+    .check-item input[type="checkbox"] {
+      width: 14px;
+      height: 14px;
+      border-radius: 3px;
+      accent-color: #0D99FF;
+      cursor: pointer;
+    }
+
+    .check-item .item-icon {
+      width: 14px;
+      height: 14px;
+      color: #334155;
+      flex-shrink: 0;
+    }
+
+    .check-item .label-text {
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      color: #1E293B;
+    }
+
+    .px-input {
+      width: 44px;
+      border: 1px solid #CBD5E1;
+      border-radius: 3px;
+      padding: 1px 3px;
+      font-size: 11px;
+      color: #0F172A;
+      text-align: center;
+      background: #FFFFFF;
+      outline: none;
+    }
+
+    .px-input:focus {
+      border-color: #0D99FF;
+    }
+
+    .unit {
+      color: #64748B;
+      font-size: 11px;
+    }
+
+    /* Action Buttons Grid */
+    .actions-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 9px;
+      margin-bottom: 12px;
+    }
+
+    .action-btn {
+      display: flex;
+      align-items: center;
+      gap: 9px;
+      padding: 10px 10px;
+      border-radius: 10px;
+      border: none;
+      cursor: pointer;
+      text-align: left;
+      transition: all 0.12s ease;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .action-btn:hover {
+      transform: translateY(-1px);
+    }
+
+    .action-btn:active {
+      transform: translateY(0);
+    }
+
+    .btn-icon {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+
+    .btn-texts {
+      display: flex;
+      flex-direction: column;
+      gap: 1px;
+      overflow: hidden;
+    }
+
+    .btn-title {
+      font-size: 12.5px;
+      font-weight: 700;
+      line-height: 1.2;
+      white-space: nowrap;
+    }
+
+    .btn-sub {
+      font-size: 9.5px;
+      line-height: 1.2;
+      white-space: nowrap;
+      opacity: 0.85;
+    }
+
+    /* 1. Capture Full Page (Blue) */
+    .btn-blue {
+      background: #0D99FF;
+      color: #FFFFFF;
+      box-shadow: 0 2px 6px rgba(13, 153, 255, 0.25);
+    }
+    .btn-blue:hover {
+      background: #007BE5;
+    }
+
+    /* 2. Capture Selection (Yellow) */
+    .btn-yellow {
+      background: #FFD000;
+      color: #111827;
+      box-shadow: 0 2px 6px rgba(255, 208, 0, 0.25);
+    }
+    .btn-yellow:hover {
+      background: #F0C000;
+    }
+    .btn-yellow .btn-sub {
+      color: #374151;
+      opacity: 0.8;
+    }
+
+    /* 3. Record Flow / Download (Dark) */
+    .btn-dark {
+      background: #111827;
+      color: #FFFFFF;
+      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
+    }
+    .btn-dark:hover {
+      background: #1F2937;
+    }
+    .btn-dark .btn-sub {
+      color: #9CA3AF;
+    }
+
+    /* 4 & 5. Outline Buttons */
+    .btn-outline {
+      background: #FFFFFF;
+      border: 1px solid #E2E8F0;
+      color: #334155;
+    }
+    .btn-outline:hover {
+      background: #F8FAFC;
+      border-color: #CBD5E1;
+      color: #0F172A;
+    }
+    .btn-outline .btn-sub {
+      color: #64748B;
+    }
+
+    .btn-full {
+      grid-column: span 2;
+      padding: 9px 12px;
+    }
+
+    /* Status Bar */
+    .status-bar {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      padding: 7px 10px;
+      background: #F8FAFC;
+      border: 1px solid #E2E8F0;
+      border-radius: 6px;
+      font-size: 11px;
+      color: #475569;
+    }
+
+    .status-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: #10B981;
+      flex-shrink: 0;
+    }
+
+    .status-dot.loading {
+      background: #F59E0B;
+      animation: pulse 1s infinite alternate;
+    }
+
+    @keyframes pulse {
+      from { opacity: 0.4; }
+      to { opacity: 1; }
+    }
+  </style>
+</head>
+<body>
+  <!-- Top Navigation -->
+  <div class="top-nav">
+    <div class="brand">
+      <img src="icons/icon-32.png" alt="Zcrap Logo" class="logo-badge">
+      <span class="brand-name">Zcrap</span>
+      <span class="version-tag">v3.0.0 CDP Pro</span>
+    </div>
+    <span class="free-pill">100% Free</span>
+  </div>
+
+  <!-- Options Row: Viewports & Themes -->
+  <div class="options-row">
+    <!-- Viewports -->
+    <fieldset class="option-card">
+      <legend>Viewports</legend>
+      <label class="check-item">
+        <input type="checkbox" id="vp-browser" checked>
+        <svg class="item-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect>
+          <line x1="8" y1="21" x2="16" y2="21"></line>
+          <line x1="12" y1="17" x2="12" y2="21"></line>
+        </svg>
+        <span class="label-text" id="browser-width-label">Browser (1482px)</span>
+      </label>
+      <label class="check-item">
+        <input type="checkbox" id="vp-1920">
+        <svg class="item-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect>
+          <line x1="8" y1="21" x2="16" y2="21"></line>
+          <line x1="12" y1="17" x2="12" y2="21"></line>
+        </svg>
+        <input type="text" class="px-input" value="1920">
+        <span class="unit">px</span>
+      </label>
+      <label class="check-item">
+        <input type="checkbox" id="vp-1440">
+        <svg class="item-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <rect x="2" y="4" width="20" height="12" rx="2"></rect>
+          <path d="M2 18h20"></path>
+        </svg>
+        <input type="text" class="px-input" value="1440">
+        <span class="unit">px</span>
+      </label>
+      <label class="check-item">
+        <input type="checkbox" id="vp-1024">
+        <svg class="item-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <rect x="4" y="2" width="16" height="20" rx="2"></rect>
+          <line x1="12" y1="18" x2="12.01" y2="18"></line>
+        </svg>
+        <input type="text" class="px-input" value="1024">
+        <span class="unit">px</span>
+      </label>
+      <label class="check-item">
+        <input type="checkbox" id="vp-768">
+        <svg class="item-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <rect x="4" y="2" width="16" height="20" rx="2"></rect>
+          <line x1="12" y1="18" x2="12.01" y2="18"></line>
+        </svg>
+        <input type="text" class="px-input" value="768">
+        <span class="unit">px</span>
+      </label>
+      <label class="check-item">
+        <input type="checkbox" id="vp-390">
+        <svg class="item-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <rect x="5" y="2" width="14" height="20" rx="2"></rect>
+          <line x1="12" y1="18" x2="12.01" y2="18"></line>
+        </svg>
+        <input type="text" class="px-input" value="390">
+        <span class="unit">px</span>
+      </label>
+    </fieldset>
+
+    <!-- Themes -->
+    <fieldset class="option-card">
+      <legend>Themes</legend>
+      <label class="check-item">
+        <input type="checkbox" id="theme-browser" checked>
+        <svg class="item-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect>
+          <line x1="8" y1="21" x2="16" y2="21"></line>
+          <line x1="12" y1="17" x2="12" y2="21"></line>
+        </svg>
+        <span class="label-text">Browser theme</span>
+      </label>
+      <label class="check-item">
+        <input type="checkbox" id="theme-light">
+        <span style="font-size:12px">☀️</span>
+        <span class="label-text">Light</span>
+      </label>
+      <label class="check-item">
+        <input type="checkbox" id="theme-dark">
+        <span style="font-size:12px">🌙</span>
+        <span class="label-text">Dark</span>
+      </label>
+    </fieldset>
+  </div>
+
+  <!-- Actions Grid (2x2 + Full Width) -->
+  <div class="actions-grid">
+    <!-- 1. Capture Full Page (Blue) -->
+    <button id="btn-copy-full" class="action-btn btn-blue">
+      <div class="btn-icon">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path>
+          <circle cx="12" cy="13" r="4"></circle>
+        </svg>
+      </div>
+      <div class="btn-texts">
+        <span class="btn-title">Capture Full Page</span>
+        <span class="btn-sub">Keyboard: <b>Alt+Shift+E</b></span>
+      </div>
+    </button>
+
+    <!-- 2. Capture Selection (Yellow) -->
+    <button id="btn-inspect" class="action-btn btn-yellow">
+      <div class="btn-icon">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0zM10 7v6m3-3H7"></path>
+        </svg>
+      </div>
+      <div class="btn-texts">
+        <span class="btn-title">Capture Selection</span>
+        <span class="btn-sub">Keyboard: <b>None</b></span>
+      </div>
+    </button>
+
+    <!-- 3. Record Flow / Download File (Dark) -->
+    <button id="btn-download" class="action-btn btn-dark">
+      <div class="btn-icon">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="12" r="10"></circle>
+          <circle cx="12" cy="12" r="4" fill="#EF4444" stroke="#EF4444"></circle>
+        </svg>
+      </div>
+      <div class="btn-texts">
+        <span class="btn-title">Record Flow</span>
+        <span class="btn-sub">Click through, export all</span>
+      </div>
+    </button>
+
+    <!-- 4. Screenshot Full Page -->
+    <button id="btn-screenshot" class="action-btn btn-outline">
+      <div class="btn-icon">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"></path>
+        </svg>
+      </div>
+      <div class="btn-texts">
+        <span class="btn-title">Screenshot Page</span>
+        <span class="btn-sub">High-res PNG image</span>
+      </div>
+    </button>
+
+    <!-- 5. Extract Design System -->
+    <button id="btn-design-system" class="action-btn btn-outline btn-full">
+      <div class="btn-icon">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+          <polyline points="14 2 14 8 20 8"></polyline>
+          <line x1="16" y1="13" x2="8" y2="13"></line>
+          <line x1="16" y1="17" x2="8" y2="17"></line>
+        </svg>
+      </div>
+      <div class="btn-texts">
+        <span class="btn-title">Extract Design System</span>
+        <span class="btn-sub">Colors, typography & styles</span>
+      </div>
+    </button>
+  </div>
+
+  <!-- Status Bar -->
+  <div class="status-bar">
+    <div class="status-dot" id="status-dot"></div>
+    <span class="status-label" id="status-text">Ready to capture page.</span>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>
