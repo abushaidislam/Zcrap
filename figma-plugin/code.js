@@ -486,9 +486,8 @@ async function buildFigmaNode(nodeData, options = {}) {
     frame.clipsContent = true;
   }
 
-  // Layout mode logic:
-  // If user selected Auto-Layout AND it's a flex or grid container:
-  const useAutoLayout = options.layoutMode === 'autolayout' && nodeData.autoLayout;
+  // Layout mode logic: Auto-Layout Engine v3.3.0 Pro
+  const useAutoLayout = (options.layoutMode !== 'pixel-perfect') && !!nodeData.autoLayout;
   if (useAutoLayout) {
     const al = nodeData.autoLayout;
     if (al.display === 'flex' || al.display === 'inline-flex') {
@@ -537,6 +536,37 @@ async function buildFigmaNode(nodeData, options = {}) {
       else if (al.justifyContent === 'space-between') frame.primaryAxisAlignItems = 'SPACE_BETWEEN';
       else if (al.justifyContent === 'flex-end') frame.primaryAxisAlignItems = 'MAX';
       else frame.primaryAxisAlignItems = 'MIN';
+    } else if (nodeData.children && nodeData.children.length > 1) {
+      // Standard HTML Block Flow: sequential vertical children automatically form VERTICAL auto-layout
+      const inFlowChildren = nodeData.children.filter(c => !c.isAbsolute);
+      if (inFlowChildren.length > 1) {
+        let isVertical = true;
+        for (let i = 1; i < inFlowChildren.length; i++) {
+          if (inFlowChildren[i].bounds.y + 4 < inFlowChildren[i - 1].bounds.y) {
+            isVertical = false;
+            break;
+          }
+        }
+        if (isVertical) {
+          frame.layoutMode = 'VERTICAL';
+          let totalGap = 0;
+          let gapCount = 0;
+          for (let i = 1; i < inFlowChildren.length; i++) {
+            const prevBottom = inFlowChildren[i - 1].bounds.y + inFlowChildren[i - 1].bounds.height;
+            const curTop = inFlowChildren[i].bounds.y;
+            const g = curTop - prevBottom;
+            if (g >= 0 && g < 150) {
+              totalGap += g;
+              gapCount++;
+            }
+          }
+          frame.itemSpacing = gapCount > 0 ? Math.round(totalGap / gapCount) : (al.gap || 0);
+          frame.paddingTop = al.paddingTop || 0;
+          frame.paddingRight = al.paddingRight || 0;
+          frame.paddingBottom = al.paddingBottom || 0;
+          frame.paddingLeft = al.paddingLeft || 0;
+        }
+      }
     }
   }
 
@@ -638,7 +668,7 @@ figma.ui.onmessage = async (msg) => {
       figma.notify('⏳ Building 1:1 Figma layers...');
 
       const rootNode = await buildFigmaNode(payload.rootNode, {
-        layoutMode: msg.layoutMode || 'pixel-perfect'
+        layoutMode: msg.layoutMode || 'autolayout'
       });
 
       if (rootNode) {

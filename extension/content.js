@@ -1468,6 +1468,45 @@
     }
   }
 
+  function wrapTextToLines(text, maxWidth, fontSize) {
+    if (!text || maxWidth <= 0) return [text];
+    const avgCharWidth = Math.max(1, fontSize * 0.55);
+    const maxCharsPerLine = Math.max(10, Math.floor(maxWidth / avgCharWidth));
+
+    const rawLines = text.split('\n');
+    const resultLines = [];
+
+    for (const rawLine of rawLines) {
+      if (rawLine.length <= maxCharsPerLine) {
+        resultLines.push(rawLine);
+        continue;
+      }
+      const words = rawLine.split(' ');
+      let currentLine = '';
+      for (const word of words) {
+        const testLine = currentLine ? currentLine + ' ' + word : word;
+        if (testLine.length > maxCharsPerLine && currentLine) {
+          resultLines.push(currentLine);
+          currentLine = word;
+        } else {
+          currentLine = testLine;
+        }
+      }
+      if (currentLine) resultLines.push(currentLine);
+    }
+    return resultLines.length > 0 ? resultLines : [text];
+  }
+
+  function encodeBase64Utf8(str) {
+    const bytes = new TextEncoder().encode(str);
+    let binString = '';
+    const chunk = 8192;
+    for (let i = 0; i < bytes.length; i += chunk) {
+      binString += String.fromCharCode.apply(null, bytes.subarray(i, i + chunk));
+    }
+    return btoa(binString);
+  }
+
   function serializeNodeToFigmaSvg(node, isRoot) {
     if (!node || !node.bounds) return '';
     const { x, y, width, height } = node.bounds;
@@ -1476,11 +1515,12 @@
 
     // 1. Text Node
     if (node.type === 'text') {
-      const text = escapeXml(node.text || '');
+      const text = node.text || '';
       const color = s.color || '#000000';
       const fontSize = s.fontSize || 14;
       const fontFamily = s.fontFamily || 'Inter, -apple-system, sans-serif';
       const fontWeight = s.fontWeight || '400';
+      const lineHeight = s.lineHeight || Math.round(fontSize * 1.3);
       const textY = Math.round(fontSize * 0.85);
 
       let textAnchor = '';
@@ -1493,8 +1533,24 @@
         textX = width;
       }
 
+      const isSingleLine = node.isSingleLine || (s.whiteSpace === 'nowrap');
+      const lines = (!isSingleLine && width > 24) ? wrapTextToLines(text, width, fontSize) : [text];
+
+      if (lines.length > 1) {
+        let tspans = '';
+        lines.forEach((line, index) => {
+          const curY = textY + (index * lineHeight);
+          tspans += '    <tspan x="' + textX + '" y="' + curY + '">' + escapeXml(line) + '</tspan>\n';
+        });
+        return '<g transform="translate(' + x + ', ' + y + ')"' + opacityAttr + '>\n' +
+          '  <text font-family="' + escapeXml(fontFamily) + '" font-size="' + fontSize + '" font-weight="' + fontWeight + '" fill="' + color + '"' + textAnchor + '>\n' +
+          tspans +
+          '  </text>\n' +
+          '</g>\n';
+      }
+
       return '<g transform="translate(' + x + ', ' + y + ')"' + opacityAttr + '>\n' +
-        '  <text x="' + textX + '" y="' + textY + '" font-family="' + escapeXml(fontFamily) + '" font-size="' + fontSize + '" font-weight="' + fontWeight + '" fill="' + color + '"' + textAnchor + '>' + text + '</text>\n' +
+        '  <text x="' + textX + '" y="' + textY + '" font-family="' + escapeXml(fontFamily) + '" font-size="' + fontSize + '" font-weight="' + fontWeight + '" fill="' + color + '"' + textAnchor + '>' + escapeXml(text) + '</text>\n' +
         '</g>\n';
     }
 
@@ -1523,15 +1579,40 @@
       } else if (f.type === 'GRADIENT_LINEAR' && f._svgGradId) {
         fillVal = 'url(#' + f._svgGradId + ')';
       }
-    } else if (s.backgroundColor && s.backgroundColor !== 'transparent') {
+    } else if (node.backgroundColor && node.backgroundColor !== 'transparent' && node.backgroundColor !== 'rgba(0, 0, 0, 0)' && node.backgroundColor !== 'rgba(0,0,0,0)') {
+      fillVal = node.backgroundColor;
+    } else if (s.backgroundColor && s.backgroundColor !== 'transparent' && s.backgroundColor !== 'rgba(0, 0, 0, 0)' && s.backgroundColor !== 'rgba(0,0,0,0)') {
       fillVal = s.backgroundColor;
     }
 
-    const rx = s.borderRadius ? ' rx="' + s.borderRadius + '" ry="' + s.borderRadius + '"' : '';
+    let rx = '';
+    if (node.borderRadius) {
+      const r = Math.max(
+        node.borderRadius.topLeft || 0,
+        node.borderRadius.topRight || 0,
+        node.borderRadius.bottomRight || 0,
+        node.borderRadius.bottomLeft || 0
+      );
+      if (r > 0) {
+        rx = ' rx="' + r + '" ry="' + r + '"';
+      }
+    } else if (s.borderRadius) {
+      const numR = parseFloat(s.borderRadius);
+      if (!isNaN(numR) && numR > 0) {
+        rx = ' rx="' + numR + '" ry="' + numR + '"';
+      }
+    }
+
     let strokeAttr = '';
     if (node.strokes && node.strokes.length > 0) {
       const st = node.strokes[0];
       strokeAttr = ' stroke="' + st.color + '" stroke-width="' + (st.width || 1) + '"';
+    } else if (node.border) {
+      const bw = Math.max(node.border.widthTop || 0, node.border.widthRight || 0, node.border.widthBottom || 0, node.border.widthLeft || 0);
+      const bc = node.border.color || node.border.colorTop || '#000000';
+      if (bw > 0 && bc && bc !== 'transparent' && bc !== 'rgba(0, 0, 0, 0)' && bc !== 'rgba(0,0,0,0)') {
+        strokeAttr = ' stroke="' + bc + '" stroke-width="' + bw + '"';
+      }
     } else if (s.border && s.border.width) {
       strokeAttr = ' stroke="' + (s.border.color || '#000') + '" stroke-width="' + s.border.width + '"';
     }
@@ -1570,16 +1651,19 @@
     const jsonStr = JSON.stringify(payload);
     let base64Json = '';
     try {
-      base64Json = btoa(unescape(encodeURIComponent(jsonStr)));
+      base64Json = encodeBase64Utf8(jsonStr);
     } catch {
-      base64Json = btoa(jsonStr.slice(0, 1000));
+      try {
+        base64Json = btoa(unescape(encodeURIComponent(jsonStr)));
+      } catch {
+        base64Json = btoa(jsonStr.slice(0, 1000));
+      }
     }
 
     return '<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="' + width + '" height="' + height + '" viewBox="0 0 ' + width + ' ' + height + '">\n' +
       '<!--zcrap-metadata:' + base64Json + ':zcrap-metadata-->\n' +
       defsStr + body + '</svg>';
   }
-
   // Direct Paste Figma Clipboard Writer (writes text/html & text/plain)
   async function writeToClipboard(text) {
     try {
