@@ -1,8 +1,8 @@
-# ⚡ Zcrap v3.4.1 High-Fidelity Engine — Web to Figma Converter (100% Free & Unlimited)
+# ⚡ Zcrap v3.5.0 Vector Scaling Pro — Web to Figma Converter (100% Free & Unlimited)
 
 **Zcrap** is a completely free, open-source alternative to `html.to.design` that converts any live website or web element into editable Figma Auto-Layout layers, fonts, images, gradients, and SVGs with 1:1 precision.
 
-In the **v3.4.1** update, after thoroughly analyzing `html.to.design`'s architecture, professional mechanisms such as **Chrome DevTools Protocol (CDP) bridge activation**, OS-aware platform font detection, secure cross-origin iframe handling, and GSAP/AOS scroll cleaning have been directly implemented. It operates entirely client-side and locally, eliminating the need for cloud credit limits or paid subscriptions.
+In the **v3.5.0** update, after thoroughly analyzing `html.to.design`'s architecture, professional mechanisms such as **Chrome DevTools Protocol (CDP) bridge activation**, OS-aware platform font detection, secure cross-origin iframe handling, and GSAP/AOS scroll cleaning have been directly implemented. It operates entirely client-side and locally, eliminating the need for cloud credit limits or paid subscriptions.
 
 ---
 
@@ -28,7 +28,7 @@ Zcrap/
 
 ---
 
-## 🔬 Mechanisms Added in v3.4.1 High-Fidelity Engine:
+## 🔬 Mechanisms Added in v3.5.0 High-Fidelity Engine:
 
 0. **🎯 Circular Avatar ClipPaths, Glass Borders & Exact DOM Word Wrapping:**
    - Native SVG `<clipPath>` engine for rounded avatars and circular images (including parent `overflow: hidden` detection).
@@ -75,7 +75,7 @@ Zcrap/
    ```
    C:\Users\ASUS\Desktop\Zcrap\extension
    ```
-5. The **Zcrap - Web to Figma (v3.4.1 High-Fidelity Engine)** extension will be added to your browser!
+5. The **Zcrap - Web to Figma (v3.5.0 High-Fidelity Engine)** extension will be added to your browser!
 
 ---
 

@@ -1,4 +1,4 @@
-// Zcrap Background Service Worker — Chrome DevTools Protocol (CDP) & Workflow Manager (v3.4.1 Pro)
+// Zcrap Background Service Worker — Chrome DevTools Protocol (CDP) & Workflow Manager (v3.5.0 Pro)
 
 const activeCdpSessions = new Set();
 

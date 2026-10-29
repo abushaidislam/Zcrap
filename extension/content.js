@@ -144,8 +144,9 @@
           for (const child of targetEl.childNodes) {
             g.appendChild(child.cloneNode(true));
           }
-          if (!svgClone.getAttribute('viewBox') && targetEl.getAttribute('viewBox')) {
-            svgClone.setAttribute('viewBox', targetEl.getAttribute('viewBox'));
+          const symVb = targetEl.getAttribute('viewBox');
+          if (symVb) {
+            svgClone.setAttribute('viewBox', symVb);
           }
           use.replaceWith(g);
         } else {
@@ -875,7 +876,7 @@
       }
     }
 
-    // 1. Handle SVG Elements (Smart Icon Naming & Inlined <use> References)
+    // 1. Handle SVG Elements (Smart Icon Naming, Inlined <use> & Precise ViewBox Capture)
     if (tagName === 'svg') {
       try {
         const svgClone = el.cloneNode(true);
@@ -884,6 +885,38 @@
         }
         // Resolve sprite sheet <use href="#id"> symbols
         inlineSvgUseReferences(svgClone);
+
+        // Extract precise viewBox from DOM element or clone
+        let vbData = null;
+        const vbAttr = svgClone.getAttribute('viewBox') || el.getAttribute('viewBox');
+        if (vbAttr) {
+          const parts = vbAttr.trim().split(/[\s,]+/).map(parseFloat);
+          if (parts.length === 4 && parts[2] > 0 && parts[3] > 0) {
+            vbData = { minX: parts[0], minY: parts[1], width: parts[2], height: parts[3] };
+          }
+        } else if (el.viewBox && el.viewBox.baseVal && el.viewBox.baseVal.width > 0) {
+          vbData = {
+            minX: el.viewBox.baseVal.x || 0,
+            minY: el.viewBox.baseVal.y || 0,
+            width: el.viewBox.baseVal.width,
+            height: el.viewBox.baseVal.height
+          };
+        } else {
+          const wAttr = parseFloat(el.getAttribute('width'));
+          const hAttr = parseFloat(el.getAttribute('height'));
+          if (!isNaN(wAttr) && !isNaN(hAttr) && wAttr > 0 && hAttr > 0) {
+            vbData = { minX: 0, minY: 0, width: wAttr, height: hAttr };
+          } else {
+            vbData = { minX: 0, minY: 0, width: bounds.width, height: bounds.height };
+          }
+        }
+
+        // Ensure clone has explicit viewBox and bounding dimensions
+        if (vbData) {
+          svgClone.setAttribute('viewBox', `${vbData.minX} ${vbData.minY} ${vbData.width} ${vbData.height}`);
+          svgClone.setAttribute('width', bounds.width);
+          svgClone.setAttribute('height', bounds.height);
+        }
 
         let iconName = el.getAttribute('aria-label') || el.querySelector('title')?.textContent;
         if (!iconName) {
@@ -911,6 +944,7 @@
           clipPath: parseClipPath(style, el),
           rotation: parseTransform(style.transform),
           svg: svgString,
+          viewBox: vbData,
           opacity: parseOpacity(style.opacity)
         };
       } catch (e) {
@@ -1774,14 +1808,62 @@
         '</g>\n';
     }
 
-    // 3. Raw SVG Node (Direct Vector Output)
+        // 3. Raw SVG Node (Direct Vector Output with Automatic ViewBox Scaling & Containment)
     const rawSvg = node.svg || node.svgContent;
     if (node.type === 'svg' && rawSvg) {
+      let minX = 0, minY = 0, vbW = width, vbH = height;
+      let hasViewBox = false;
+
+      if (node.viewBox && node.viewBox.width > 0 && node.viewBox.height > 0) {
+        minX = node.viewBox.minX || 0;
+        minY = node.viewBox.minY || 0;
+        vbW = node.viewBox.width;
+        vbH = node.viewBox.height;
+        hasViewBox = true;
+      } else {
+        const vbMatch = rawSvg.match(/viewBox=["']\s*([-\d.]+)[,\s]+([-\d.]+)[,\s]+([-\d.]+)[,\s]+([-\d.]+)\s*["']/i);
+        if (vbMatch) {
+          minX = parseFloat(vbMatch[1]) || 0;
+          minY = parseFloat(vbMatch[2]) || 0;
+          vbW = parseFloat(vbMatch[3]) || width;
+          vbH = parseFloat(vbMatch[4]) || height;
+          hasViewBox = true;
+        } else {
+          const wMatch = rawSvg.match(/width=["']\s*([\d.]+)/i);
+          const hMatch = rawSvg.match(/height=["']\s*([\d.]+)/i);
+          if (wMatch && hMatch) {
+            vbW = parseFloat(wMatch[1]) || width;
+            vbH = parseFloat(hMatch[2]) || height;
+            hasViewBox = true;
+          }
+        }
+      }
+
+      let transformStr = 'translate(' + x + ', ' + y + ')';
+      if (hasViewBox && vbW > 0 && vbH > 0 && (Math.abs(vbW - width) > 0.5 || Math.abs(vbH - height) > 0.5 || minX !== 0 || minY !== 0)) {
+        const sx = Math.round((width / vbW) * 10000) / 10000;
+        const sy = Math.round((height / vbH) * 10000) / 10000;
+        if (minX !== 0 || minY !== 0) {
+          transformStr += ' scale(' + sx + ', ' + sy + ') translate(' + (-minX) + ', ' + (-minY) + ')';
+        } else {
+          transformStr += ' scale(' + sx + ', ' + sy + ')';
+        }
+      }
+
+      clipCounter++;
+      const svgClipId = 'zcrap_svgclip_' + clipCounter;
+      const clipDef = '  <defs><clipPath id="' + svgClipId + '"><rect x="' + minX + '" y="' + minY + '" width="' + vbW + '" height="' + vbH + '"/></clipPath></defs>\n';
+      const clipAttr = ' clip-path="url(#' + svgClipId + ')"';
+
       const inner = rawSvg
         .replace(/<\?xml[^>]*\?>/gi, '')
         .replace(/<svg[^>]*>/i, '')
         .replace(/<\/svg>/i, '');
-      return '<g transform="translate(' + x + ', ' + y + ')"' + opacityAttr + '>\n' + inner + '\n</g>\n';
+
+      return '<g transform="' + transformStr + '"' + opacityAttr + clipAttr + '>\n' +
+        clipDef +
+        inner + '\n' +
+        '</g>\n';
     }
 
     // 4. Frame / Container Node (with glass border stroke-opacity & fill-opacity)
