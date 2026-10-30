@@ -1,8 +1,13 @@
-# ⚡ Zcrap v3.8.3 Semantic Landmark Layers & FAQ Bug Fix — Web to Figma Converter (100% Free & Unlimited)
+# ⚡ Zcrap v3.8.4 Crisp Pill Buttons & Glow Filter Fix — Web to Figma Converter (100% Free & Unlimited)
 
 **Zcrap** is a free, open-source web-to-Figma converter. Pixel-Perfect import is the default for visual matching; Auto-Layout conversion remains an explicit option when responsive editable flow is preferred.
 
 ## Release notes
+
+### v3.8.4 — Crisp Pill Buttons & Glow Filter Fix
+
+- **Glow Pseudo-Element Filtering**: Suppressed unrenderable CSS blur/radial glow pseudo-elements on buttons and cards, eliminating the squashed white oval/blob that previously obscured pill buttons.
+- **Perfect Pill Shape Rendering**: Buttons with 9999px or half-dimension radii now render as crisp, perfect pill shapes matching the source website.
 
 ### v3.8.3 — Semantic Landmark Layers & FAQ Bug Fix
 

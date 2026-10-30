@@ -465,6 +465,14 @@
 
       // 2. If it is a visible shape / pill / dot / divider / overlay
       if (width > 0 || height > 0 || bg || bgImg) {
+        // Skip decorative blur/glow pseudo-elements without text/icons
+        // (In SVG vector output, CSS GPU blurs degrade into hideous solid squashed ovals that obscure buttons!)
+        const filterStr = pStyle.filter || pStyle.webkitFilter || '';
+        const isBlurGlow = filterStr.includes('blur(') || (bgImg && bgImg.includes('radial-gradient') && isAbsolute && parentRect && (width >= parentRect.width * 0.7));
+        if (isBlurGlow) {
+          return null;
+        }
+
         let grad = null;
         let bgUrl = null;
         if (bgImg) {

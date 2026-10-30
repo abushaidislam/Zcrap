@@ -1,6 +1,6 @@
 {
   "name": "zcrap",
-  "version": "3.8.3",
+  "version": "3.8.4",
   "description": "Zcrap - Web to Figma Converter (Chrome Extension & Figma Plugin)",
   "private": true,
   "scripts": {
