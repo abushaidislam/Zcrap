@@ -1,8 +1,16 @@
-# ⚡ Zcrap v3.8.2 Corner Radius Fidelity — Web to Figma Converter (100% Free & Unlimited)
+# ⚡ Zcrap v3.8.3 Semantic Landmark Layers & FAQ Bug Fix — Web to Figma Converter (100% Free & Unlimited)
 
 **Zcrap** is a free, open-source web-to-Figma converter. Pixel-Perfect import is the default for visual matching; Auto-Layout conversion remains an explicit option when responsive editable flow is preferred.
 
 ## Release notes
+
+### v3.8.3 — Semantic Landmark Layers & FAQ Bug Fix
+
+- **Root Wrapper Unrolling**: Automatically unwraps full-screen anonymous wrapper `<div>`s (`#__next`, `min-h-screen`, Vite `#root`), promoting top-level semantic sections (`Header`, `Main`, `Footer`, `Nav`, `Section`) directly to canvas root layers, matching `html.to.design` hierarchy.
+- **XML-Compliant SVG IDs**: Sanitized SVG element IDs to valid XML NCNames (`Nav-Ordered-List`, `Main`, `Header`, `Button-Get-Started`), preventing Figma's C++ XML parser from discarding layer names and falling back to generic `Group`.
+- **Closed FAQ Accordion Overlap Fix**: Excluded collapsed/hidden accordion answers (`height <= 0 && overflow: hidden` or `data-state="closed"`), eliminating visual overlap on FAQ items.
+- **Independent Border Line Rendering**: Non-uniform borders (such as FAQ bottom divider lines) now render as discrete 1px divider lines rather than 4-sided rectangular boxes.
+- **Interactive Component Preservation**: Prevented interactive controls (Buttons, Links, Accordion Triggers) from being flattened into bare text even when rendered with transparent backgrounds.
 
 ### v3.8.2 — Native Rectangle Corner Radius Fidelity
 

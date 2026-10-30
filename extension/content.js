@@ -568,6 +568,9 @@
       if (ariaHasPopup === 'menu' || role === 'menu') {
         return 'Button menu';
       }
+      if (el.getAttribute('data-slot') === 'accordion-trigger' || el.getAttribute('aria-expanded') !== null) {
+        return textSnippet ? `Accordion: ${textSnippet}` : 'Accordion Trigger';
+      }
       if (ariaLabel && ariaLabel.trim().length > 0) {
         return `Button - ${truncate(ariaLabel.trim(), 30)}`;
       }
@@ -657,9 +660,6 @@
     }
 
     // 9. Semantic Class or ID on Div/Span
-    if (tagName === 'div') {
-      return semanticClass || id || 'Container';
-    }
     if (semanticClass) return semanticClass;
     if (id) return id;
 
@@ -857,6 +857,19 @@
 
     const rect = el.getBoundingClientRect();
     if (rect.width <= 0 && rect.height <= 0 && el.children.length === 0) {
+      return null;
+    }
+
+    // Skip collapsed/hidden accordions, drawers, and menus (e.g. data-state="closed" or height: 0 with overflow: hidden)
+    const isCollapsedWithClip = (rect.height <= 0 || rect.width <= 0) &&
+      (style.overflow === 'hidden' || style.overflow === 'clip' || style.overflowX === 'hidden' || style.overflowY === 'hidden');
+    if (isCollapsedWithClip) {
+      return null;
+    }
+    if (el.getAttribute('data-state') === 'closed' && (rect.height <= 0 || style.display === 'none')) {
+      return null;
+    }
+    if (el.hasAttribute('hidden') && rect.height <= 0) {
       return null;
     }
 
@@ -1602,6 +1615,36 @@
             rootData.bounds.height
           );
           rootData.bounds.height = fullHeight;
+
+          // Root Wrapper Unrolling:
+          // Modern frameworks (Next.js #__next, Nuxt, Vite #root) wrap all page content in full-height
+          // anonymous <div> wrappers. If the root contains only a single unstyled wrapper (or nested wrappers),
+          // unroll them so semantic landmark sections (<header>, <main>, <footer>, <nav>, <section>)
+          // are promoted directly under the canvas artboard, matching html.to.design!
+          while (
+            rootData.children &&
+            rootData.children.length === 1 &&
+            rootData.children[0].type === 'frame'
+          ) {
+            const onlyChild = rootData.children[0];
+            const hasVisuals = onlyChild.backgroundColor || onlyChild.backgroundImage || onlyChild.border || (onlyChild.borderRadius && (onlyChild.borderRadius.topLeft > 0));
+            if (hasVisuals) break;
+            if (onlyChild.children && onlyChild.children.length > 0) {
+              const offX = onlyChild.bounds ? (onlyChild.bounds.x || 0) : 0;
+              const offY = onlyChild.bounds ? (onlyChild.bounds.y || 0) : 0;
+              if (offX !== 0 || offY !== 0) {
+                for (const c of onlyChild.children) {
+                  if (c.bounds) {
+                    c.bounds.x += offX;
+                    c.bounds.y += offY;
+                  }
+                }
+              }
+              rootData.children = onlyChild.children;
+            } else {
+              break;
+            }
+          }
         }
       }
 
@@ -1847,14 +1890,22 @@
 
   function formatSvgId(name) {
     if (!name) return 'Layer';
-    const clean = String(name)
+    let clean = String(name)
       .replace(/[\r\n\t]+/g, ' ')
-      .replace(/[<>"'&]/g, '')
+      .replace(/[→>]+/g, '-')
+      .replace(/[:\/\\|#.,]+/g, '-')
+      .replace(/\s+/g, '-')
+      .replace(/[^a-zA-Z0-9_-]/g, '')
+      .replace(/-+/g, '-')
+      .replace(/^-|-$/g, '')
       .trim();
+    if (!clean || /^[0-9]/.test(clean)) {
+      clean = 'Layer-' + (clean || 'node');
+    }
     const base = clean.slice(0, 50) || 'Layer';
     const count = (svgIdCounts[base] || 0) + 1;
     svgIdCounts[base] = count;
-    return count === 1 ? base : base + ' ' + count;
+    return count === 1 ? base : base + '-' + count;
   }
 
   function formatSvgDataName(name) {
@@ -2084,12 +2135,57 @@
     let strokeAttr = '';
     let rawBorderColor = null;
     let strokeWidth = 0;
+    const b = node.border;
+    const wT = b ? (b.widthTop || 0) : 0;
+    const wR = b ? (b.widthRight || 0) : 0;
+    const wB = b ? (b.widthBottom || 0) : 0;
+    const wL = b ? (b.widthLeft || 0) : 0;
+    const cT = b ? (b.colorTop || b.color) : null;
+    const cR = b ? (b.colorRight || b.color) : null;
+    const cB = b ? (b.colorBottom || b.color) : null;
+    const cL = b ? (b.colorLeft || b.color) : null;
+
+    let independentBordersSvg = '';
+
     if (node.strokes && node.strokes.length > 0) {
       rawBorderColor = node.strokes[0].color;
       strokeWidth = node.strokes[0].width || 1;
-    } else if (node.border) {
-      strokeWidth = Math.max(node.border.widthTop || 0, node.border.widthRight || 0, node.border.widthBottom || 0, node.border.widthLeft || 0);
-      rawBorderColor = node.border.color || node.border.colorTop;
+    } else if (b) {
+      const isUniform = (wT === wR && wR === wB && wB === wL);
+      if (isUniform && wT > 0) {
+        strokeWidth = wT;
+        rawBorderColor = cT || cB || cR || cL;
+      } else {
+        // Individual borders (e.g. FAQ bottom divider line, card top/bottom borders)
+        if (wB > 0 && cB) {
+          const sc = parseSvgColor(cB);
+          if (sc) {
+            const op = sc.opacity < 1 ? ' fill-opacity="' + sc.opacity + '"' : '';
+            independentBordersSvg += '<rect id="' + formatSvgId('Border Bottom') + '" data-name="Border Bottom" x="0" y="' + Math.max(0, height - wB) + '" width="' + width + '" height="' + wB + '" fill="' + sc.hex + '"' + op + '/>\n';
+          }
+        }
+        if (wT > 0 && cT) {
+          const sc = parseSvgColor(cT);
+          if (sc) {
+            const op = sc.opacity < 1 ? ' fill-opacity="' + sc.opacity + '"' : '';
+            independentBordersSvg += '<rect id="' + formatSvgId('Border Top') + '" data-name="Border Top" x="0" y="0" width="' + width + '" height="' + wT + '" fill="' + sc.hex + '"' + op + '/>\n';
+          }
+        }
+        if (wL > 0 && cL) {
+          const sc = parseSvgColor(cL);
+          if (sc) {
+            const op = sc.opacity < 1 ? ' fill-opacity="' + sc.opacity + '"' : '';
+            independentBordersSvg += '<rect id="' + formatSvgId('Border Left') + '" data-name="Border Left" x="0" y="0" width="' + wL + '" height="' + height + '" fill="' + sc.hex + '"' + op + '/>\n';
+          }
+        }
+        if (wR > 0 && cR) {
+          const sc = parseSvgColor(cR);
+          if (sc) {
+            const op = sc.opacity < 1 ? ' fill-opacity="' + sc.opacity + '"' : '';
+            independentBordersSvg += '<rect id="' + formatSvgId('Border Right') + '" data-name="Border Right" x="' + Math.max(0, width - wR) + '" y="0" width="' + wR + '" height="' + height + '" fill="' + sc.hex + '"' + op + '/>\n';
+          }
+        }
+      }
     } else if (s.border && s.border.width) {
       strokeWidth = s.border.width;
       rawBorderColor = s.border.color;
@@ -2117,6 +2213,7 @@
         bgRect = '<rect id="' + rId + '" data-name="' + rDataName + '" x="0" y="0" width="' + width + '" height="' + height + '" fill="' + fillVal + '"' + fillOpacityAttr + rx + strokeAttr + '/>\n';
       }
     }
+    bgRect += independentBordersSvg;
 
     // Do not generate SVG clipPath mask for standard containers when bgRect already has rx/ry,
     // because Figma converts SVG clipPath into a Clip Path Group (Vector Mask) which destroys the live Rectangle!
@@ -2135,10 +2232,11 @@
     }
 
     // Redundant wrapper flattening:
-    // If this node is NOT root, has NO visual styling (no background, no border, no clip, opacity is 1),
-    // and has a single child, we lift that child directly to avoid unnecessary nested Groups in Figma.
+    // Only flatten unstyled ANONYMOUS wrappers ('Container', 'Group', 'Span').
+    // NEVER flatten interactive components like Buttons, Links, or semantic landmarks!
+    const isAnonymousWrapper = node.name === 'Container' || node.name === 'Group' || node.name === 'Span';
     const hasVisuals = (bgRect && bgRect.trim().length > 0) || (frameClipAttr && frameClipAttr.length > 0) || (opacityAttr && opacityAttr.length > 0);
-    if (!hasVisuals && node.children && node.children.length === 1) {
+    if (!hasVisuals && isAnonymousWrapper && node.children && node.children.length === 1) {
       const singleChild = node.children[0];
       if (singleChild.type === 'text') {
         const adjustedText = Object.assign({}, singleChild, {
