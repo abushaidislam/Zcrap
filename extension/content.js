@@ -1465,12 +1465,52 @@
       };
     }
 
-    // Extract styles: Corner Radius
+    // Extract styles: Corner Radius with full CSS resolution (50%, 9999px, pills, and parent overflow:hidden inheritance)
+    const rawRadius = el.style?.borderRadius || style.borderRadius || '';
+    let rTopLeft = parsePx(style.borderTopLeftRadius);
+    let rTopRight = parsePx(style.borderTopRightRadius);
+    let rBottomRight = parsePx(style.borderBottomRightRadius);
+    let rBottomLeft = parsePx(style.borderBottomLeftRadius);
+
+    // If all corners are 0, check if immediate parent has overflow:hidden with rounded corners
+    // (Common in React/Tailwind/Radix cards where outer wrapper clips inner background)
+    if (rTopLeft === 0 && rTopRight === 0 && rBottomRight === 0 && rBottomLeft === 0 && el.parentElement && el.parentElement !== document.body) {
+      try {
+        const p = el.parentElement;
+        const pStyle = window.getComputedStyle(p);
+        if (pStyle.overflow === 'hidden' || pStyle.overflow === 'clip') {
+          const pTL = parsePx(pStyle.borderTopLeftRadius);
+          const pTR = parsePx(pStyle.borderTopRightRadius);
+          const pBR = parsePx(pStyle.borderBottomRightRadius);
+          const pBL = parsePx(pStyle.borderBottomLeftRadius);
+          if (pTL > 0 || pTR > 0 || pBR > 0 || pBL > 0) {
+            const pRect = p.getBoundingClientRect();
+            if (Math.abs(rect.width - pRect.width) < 6 && Math.abs(rect.height - pRect.height) < 6) {
+              rTopLeft = pTL;
+              rTopRight = pTR;
+              rBottomRight = pBR;
+              rBottomLeft = pBL;
+            }
+          }
+        }
+      } catch {}
+    }
+
+    // Handle 50% (circles) and 9999px (pills) / Tailwind rounded-full across all elements
+    const isPillOrCircle = rawRadius.includes('50%') || rawRadius.includes('9999px') || /rounded-full/i.test(el.className) || rTopLeft >= width / 2 || rTopLeft >= height / 2;
+    if (isPillOrCircle && width > 0 && height > 0) {
+      const half = Math.round(Math.min(width, height) / 2);
+      rTopLeft = half;
+      rTopRight = half;
+      rBottomRight = half;
+      rBottomLeft = half;
+    }
+
     const borderRadius = {
-      topLeft: parsePx(style.borderTopLeftRadius),
-      topRight: parsePx(style.borderTopRightRadius),
-      bottomRight: parsePx(style.borderBottomRightRadius),
-      bottomLeft: parsePx(style.borderBottomLeftRadius)
+      topLeft: rTopLeft,
+      topRight: rTopRight,
+      bottomRight: rBottomRight,
+      bottomLeft: rBottomLeft
     };
 
     // Extract styles: 4-Sided Independent Borders
@@ -2006,24 +2046,38 @@
     let maxRadius = 0;
     let isAsymmetric = false;
     let tl = 0, tr = 0, br = 0, bl = 0;
+    const maxPossibleR = Math.min(width / 2, height / 2);
+
     if (node.borderRadius) {
       tl = node.borderRadius.topLeft || 0;
       tr = node.borderRadius.topRight || 0;
       br = node.borderRadius.bottomRight || 0;
       bl = node.borderRadius.bottomLeft || 0;
-      maxRadius = Math.max(tl, tr, br, bl);
-      if (maxRadius > 0) {
-        if (tl === tr && tr === br && br === bl) {
+
+      // Tolerance of 0.75px for subpixel/high-DPI zoom rounding discrepancies across corners
+      const isSymmetric = Math.abs(tl - tr) <= 0.75 && Math.abs(tr - br) <= 0.75 && Math.abs(br - bl) <= 0.75;
+
+      if (isSymmetric) {
+        const avgR = Math.round((tl + tr + br + bl) / 4);
+        maxRadius = Math.max(0, Math.min(avgR, maxPossibleR));
+        if (maxRadius > 0) {
           rx = ' rx="' + maxRadius + '" ry="' + maxRadius + '"';
-        } else {
+        }
+      } else {
+        tl = Math.min(tl, maxPossibleR);
+        tr = Math.min(tr, maxPossibleR);
+        br = Math.min(br, maxPossibleR);
+        bl = Math.min(bl, maxPossibleR);
+        maxRadius = Math.max(tl, tr, br, bl);
+        if (maxRadius > 0) {
           isAsymmetric = true;
         }
       }
     } else if (s.borderRadius) {
       const numR = parseFloat(s.borderRadius);
       if (!isNaN(numR) && numR > 0) {
-        maxRadius = numR;
-        rx = ' rx="' + numR + '" ry="' + numR + '"';
+        maxRadius = Math.min(Math.round(numR), maxPossibleR);
+        rx = ' rx="' + maxRadius + '" ry="' + maxRadius + '"';
       }
     }
 
@@ -2064,15 +2118,10 @@
       }
     }
 
-    // Clip nested content if container has overflow: hidden and rounded corners
+    // Do not generate SVG clipPath mask for standard containers when bgRect already has rx/ry,
+    // because Figma converts SVG clipPath into a Clip Path Group (Vector Mask) which destroys the live Rectangle!
     let frameClipDef = '';
     let frameClipAttr = '';
-    const hasFrameClip = (node.overflow === 'hidden' || node.overflow === 'clip') && maxRadius > 0;
-    if (hasFrameClip) {
-      const fClipId = formatSvgId('Mask for ' + (node.name || 'Container'));
-      frameClipDef = '  <defs><clipPath id="' + fClipId + '"><rect x="0" y="0" width="' + width + '" height="' + height + '"' + rx + '/></clipPath></defs>\n';
-      frameClipAttr = ' clip-path="url(#' + fClipId + ')"';
-    }
 
     let childrenSvg = '';
     if (node.children && Array.isArray(node.children)) {

@@ -358,10 +358,11 @@ async function buildFigmaNode(nodeData, options = {}) {
     }
 
     if (nodeData.borderRadius) {
-      rectNode.topLeftRadius = nodeData.borderRadius.topLeft || 0;
-      rectNode.topRightRadius = nodeData.borderRadius.topRight || 0;
-      rectNode.bottomRightRadius = nodeData.borderRadius.bottomRight || 0;
-      rectNode.bottomLeftRadius = nodeData.borderRadius.bottomLeft || 0;
+      const maxR = Math.min((nodeData.bounds?.width || 100) / 2, (nodeData.bounds?.height || 100) / 2);
+      rectNode.topLeftRadius = Math.min(nodeData.borderRadius.topLeft || 0, maxR);
+      rectNode.topRightRadius = Math.min(nodeData.borderRadius.topRight || 0, maxR);
+      rectNode.bottomRightRadius = Math.min(nodeData.borderRadius.bottomRight || 0, maxR);
+      rectNode.bottomLeftRadius = Math.min(nodeData.borderRadius.bottomLeft || 0, maxR);
     }
     if (nodeData.rotation) {
       try { rectNode.rotation = -nodeData.rotation; } catch {}
@@ -418,10 +419,11 @@ async function buildFigmaNode(nodeData, options = {}) {
 
   // Corner Radius
   if (nodeData.borderRadius) {
-    frame.topLeftRadius = nodeData.borderRadius.topLeft || 0;
-    frame.topRightRadius = nodeData.borderRadius.topRight || 0;
-    frame.bottomRightRadius = nodeData.borderRadius.bottomRight || 0;
-    frame.bottomLeftRadius = nodeData.borderRadius.bottomLeft || 0;
+    const maxR = Math.min((nodeData.bounds?.width || 100) / 2, (nodeData.bounds?.height || 100) / 2);
+    frame.topLeftRadius = Math.min(nodeData.borderRadius.topLeft || 0, maxR);
+    frame.topRightRadius = Math.min(nodeData.borderRadius.topRight || 0, maxR);
+    frame.bottomRightRadius = Math.min(nodeData.borderRadius.bottomRight || 0, maxR);
+    frame.bottomLeftRadius = Math.min(nodeData.borderRadius.bottomLeft || 0, maxR);
   }
 
   // Effects: Drop Shadows + Glassmorphism Backdrop Blur + Layer Blur

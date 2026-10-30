@@ -1,8 +1,15 @@
-# ⚡ Zcrap v3.8.1 Semantic Layer Architecture — Web to Figma Converter (100% Free & Unlimited)
+# ⚡ Zcrap v3.8.2 Corner Radius Fidelity — Web to Figma Converter (100% Free & Unlimited)
 
 **Zcrap** is a free, open-source web-to-Figma converter. Pixel-Perfect import is the default for visual matching; Auto-Layout conversion remains an explicit option when responsive editable flow is preferred.
 
 ## Release notes
+
+### v3.8.2 — Native Rectangle Corner Radius Fidelity
+
+- **Subpixel Symmetry Tolerance**: Implemented tolerance threshold for subpixel corner differences, preventing rounded cards and buttons from falsely degenerating into flat vector paths.
+- **Parent Overflow Clipping Inheritance**: Inner background elements now inherit corner radius from `overflow: hidden` parent containers, eliminating sharp corners on modern framework cards.
+- **Pill & Circle Clamping**: Clamped 50% and 9999px radii to element half-dimensions, ensuring Figma imports native Rectangles with live corner radius rather than distorted vectors.
+- **Removed Mask Wrapping**: Eliminated redundant SVG clipPath wrappers that caused Figma to convert live rounded rectangles into Vector Mask groups.
 
 ### v3.8.1 — Redundant Wrapper Flattening & Button Listbox Naming
 
