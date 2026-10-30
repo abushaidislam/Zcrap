@@ -64,6 +64,9 @@ try {
 
   ensureDistDir();
 
+  // Ensure content script is freshly assembled from modular sources
+  require('./build');
+
   // Package Chrome Extension
   createZip('extension', 'zcrap-extension.zip');
 

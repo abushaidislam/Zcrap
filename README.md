@@ -1,8 +1,19 @@
-# ⚡ Zcrap v3.8.4 Crisp Pill Buttons & Glow Filter Fix — Web to Figma Converter (100% Free & Unlimited)
+# ⚡ Zcrap v3.9.0 Modular Architecture — Web to Figma Converter (100% Free & Unlimited)
 
 **Zcrap** is a free, open-source web-to-Figma converter. Pixel-Perfect import is the default for visual matching; Auto-Layout conversion remains an explicit option when responsive editable flow is preferred.
 
 ## Release notes
+
+### v3.9.0 — Modular Architecture & Build Pipeline
+
+- **Modular Source Architecture**: Refactored the monolithic 2,500+ line `content.js` into 5 clean, focused, maintainable modules inside `extension/src/`:
+  - `parsers.js`: CSS colors, gradients, box-shadows, blurs, transforms, platform fonts, and pseudo-element extraction.
+  - `naming.js`: ARIA heuristics, semantic class extraction, and smart layer naming engine.
+  - `dom-serializer.js`: Recursive DOM tree traversal and high-fidelity node bounds calculation.
+  - `svg-serializer.js`: Direct canvas SVG vector serializer, XML-compliant IDs, and base64 metadata encoder.
+  - `controller.js`: Preload auto-scroll pipeline, capture coordinator, clipboard writer, element inspector, and runtime message listeners.
+- **Zero-Dependency Build Engine (`scripts/build.js`)**: Fast, automated bundling pipeline that validates each module syntax and assembles the unified `extension/content.js`.
+- **Enhanced Validation**: Updated `scripts/validate.js` to syntax-verify all 5 source modules, `build.js`, and the assembled distribution files with 0 errors.
 
 ### v3.8.4 — Crisp Pill Buttons & Glow Filter Fix
 

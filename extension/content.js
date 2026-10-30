@@ -1,8 +1,14 @@
 // Zcrap Content Script - High-Fidelity 1:1 Web Serializer
+// AUTO-GENERATED from extension/src/ by scripts/build.js — DO NOT EDIT DIRECTLY!
 (function () {
   window.__zcrap_installed = true;
   console.log('[Zcrap] High-fidelity 1:1 engine active.');
 
+  // ==========================================================================
+  // MODULE: parsers.js
+  // ==========================================================================
+
+// Zcrap - CSS & Style Parsers
   function parsePx(val) {
     if (!val) return 0;
     const num = parseFloat(val);
@@ -504,6 +510,11 @@
     return null;
   }
 
+  // ==========================================================================
+  // MODULE: naming.js
+  // ==========================================================================
+
+// Zcrap - Semantic Layer Naming Engine
   // --- Smart Semantic Layer Naming Engine (html.to.design style) ---
   const UTILITY_CLASS_REGEX = /^(flex|grid|block|inline|hidden|items-|justify-|content-|self-|gap-|space-|p-|px-|py-|pt-|pr-|pb-|pl-|m-|mx-|my-|mt-|mr-|mb-|ml-|w-|h-|min-w-|max-w-|min-h-|max-h-|bg-|text-|font-|leading-|tracking-|border|rounded|shadow|opacity-|transition-|duration-|ease-|delay-|animate-|overflow-|z-|cursor-|select-|top-|bottom-|left-|right-|inset-|relative|absolute|fixed|sticky|row|col|container|mx-auto|col-|row-|hover:|focus:|active:|disabled:|group-|dark:|sm:|md:|lg:|xl:|2xl:|css-|sc-|jsx-|_)/i;
 
@@ -832,6 +843,11 @@
     return lines;
   }
 
+  // ==========================================================================
+  // MODULE: dom-serializer.js
+  // ==========================================================================
+
+// Zcrap - DOM Traversal & Node Serializer
   // Main Recursive Serializer with RELATIVE PARENT BOUNDS
   function serializeNode(el, parentRect, depth = 0) {
     if (!el || el.nodeType !== Node.ELEMENT_NODE) return null;
@@ -1602,192 +1618,11 @@
     };
   }
 
-  // Full Capture Function with Animation Freezing (CDP Engine v3.0.0)
-  function capturePage(targetEl) {
-    const resumeAnimations = pauseAnimations();
-    try {
-      const root = targetEl || document.body;
-      const rootRect = root.getBoundingClientRect();
+  // ==========================================================================
+  // MODULE: svg-serializer.js
+  // ==========================================================================
 
-      // Root node relative to itself is at (0, 0)
-      const rootData = serializeNode(root, rootRect, 0);
-      if (rootData) {
-        rootData.bounds.x = 0;
-        rootData.bounds.y = 0;
-        if (!targetEl || targetEl === document.body) {
-          const fullHeight = Math.max(
-            document.body.scrollHeight || 0,
-            document.documentElement.scrollHeight || 0,
-            document.body.offsetHeight || 0,
-            document.documentElement.offsetHeight || 0,
-            rootData.bounds.height
-          );
-          rootData.bounds.height = fullHeight;
-
-          // Root Wrapper Unrolling:
-          // Modern frameworks (Next.js #__next, Nuxt, Vite #root) wrap all page content in full-height
-          // anonymous <div> wrappers. If the root contains only a single unstyled wrapper (or nested wrappers),
-          // unroll them so semantic landmark sections (<header>, <main>, <footer>, <nav>, <section>)
-          // are promoted directly under the canvas artboard, matching html.to.design!
-          while (
-            rootData.children &&
-            rootData.children.length === 1 &&
-            rootData.children[0].type === 'frame'
-          ) {
-            const onlyChild = rootData.children[0];
-            const hasVisuals = onlyChild.backgroundColor || onlyChild.backgroundImage || onlyChild.border || (onlyChild.borderRadius && (onlyChild.borderRadius.topLeft > 0));
-            if (hasVisuals) break;
-            if (onlyChild.children && onlyChild.children.length > 0) {
-              const offX = onlyChild.bounds ? (onlyChild.bounds.x || 0) : 0;
-              const offY = onlyChild.bounds ? (onlyChild.bounds.y || 0) : 0;
-              if (offX !== 0 || offY !== 0) {
-                for (const c of onlyChild.children) {
-                  if (c.bounds) {
-                    c.bounds.x += offX;
-                    c.bounds.y += offY;
-                  }
-                }
-              }
-              rootData.children = onlyChild.children;
-            } else {
-              break;
-            }
-          }
-        }
-      }
-
-      return {
-        app: 'Zcrap',
-        version: '3.7.1',
-        title: document.title || 'Web Capture',
-        url: window.location.href,
-        viewport: {
-          width: Math.round(window.innerWidth),
-          height: Math.round(window.innerHeight)
-        },
-        rootNode: rootData
-      };
-    } finally {
-      resumeAnimations();
-    }
-  }
-
-  // Visual Toast
-  function showToast(msg, isSuccess = true) {
-    const old = document.getElementById('__zcrap_toast');
-    if (old) old.remove();
-
-    const t = document.createElement('div');
-    t.id = '__zcrap_toast';
-    t.style.position = 'fixed';
-    t.style.bottom = '24px';
-    t.style.right = '24px';
-    t.style.background = isSuccess ? '#090D16' : '#7F1D1D';
-    t.style.color = '#FFF';
-    t.style.border = `2px solid ${isSuccess ? '#00F0FF' : '#EF4444'}`;
-    t.style.borderRadius = '8px';
-    t.style.padding = '12px 20px';
-    t.style.fontSize = '14px';
-    t.style.fontWeight = 'bold';
-    t.style.boxShadow = '0 12px 30px rgba(0,0,0,0.6)';
-    t.style.zIndex = '2147483647';
-    t.style.fontFamily = '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
-    t.style.transition = 'opacity 0.3s ease';
-    t.textContent = msg;
-    document.body.appendChild(t);
-    setTimeout(() => {
-      t.style.opacity = '0';
-      setTimeout(() => t.remove(), 300);
-    }, 4000);
-  }
-
-  // Auto-scroll and preload pipeline for deep pages (Lazy images, dynamic sections, web fonts)
-  async function autoScrollAndPreloadPage() {
-    const initialX = window.scrollX;
-    const initialY = window.scrollY;
-
-    // 1. Force lazy-loading attributes to eager on all media
-    try {
-      const lazyElements = document.querySelectorAll('img, picture source, iframe');
-      lazyElements.forEach(el => {
-        if (el.getAttribute('loading') === 'lazy') {
-          el.setAttribute('loading', 'eager');
-        }
-        const lazySrc = el.dataset?.src || el.dataset?.original || el.dataset?.lazySrc || el.dataset?.url;
-        if (lazySrc && !el.src) {
-          el.src = lazySrc;
-        }
-        const lazySrcset = el.dataset?.srcset;
-        if (lazySrcset && !el.srcset) {
-          el.srcset = lazySrcset;
-        }
-      });
-    } catch {}
-
-    // 2. Step-scroll from top to bottom to trigger IntersectionObservers and scroll events
-    const viewportHeight = window.innerHeight || 800;
-    const totalHeight = Math.max(
-      document.body.scrollHeight || 0,
-      document.documentElement.scrollHeight || 0,
-      document.body.offsetHeight || 0,
-      document.documentElement.offsetHeight || 0
-    );
-
-    if (totalHeight > viewportHeight * 1.2) {
-      const step = Math.min(Math.round(viewportHeight * 0.75), 650);
-      const maxSteps = 40; // Max ~25,000px depth protection
-      let currentY = 0;
-      let stepCount = 0;
-
-      while (currentY < totalHeight && stepCount < maxSteps) {
-        currentY += step;
-        window.scrollTo({ left: 0, top: currentY, behavior: 'instant' });
-        window.dispatchEvent(new Event('scroll'));
-        await new Promise(r => setTimeout(r, 40));
-        stepCount++;
-      }
-
-      // Hit very bottom
-      window.scrollTo({ left: 0, top: totalHeight, behavior: 'instant' });
-      window.dispatchEvent(new Event('scroll'));
-      await new Promise(r => setTimeout(r, 80));
-    }
-
-    // 3. Wait for pending images to finish loading / decoding
-    const imgs = Array.from(document.images);
-    const pending = imgs.filter(img => !img.complete && (img.src || img.currentSrc));
-    if (pending.length > 0) {
-      await Promise.allSettled(
-        pending.slice(0, 50).map(img => {
-          if (img.decode) return img.decode().catch(() => {});
-          return new Promise(resolve => {
-            img.onload = img.onerror = resolve;
-            setTimeout(resolve, 500);
-          });
-        })
-      );
-    }
-
-    // 4. Wait for web fonts
-    if (document.fonts && document.fonts.ready) {
-      try {
-        await Promise.race([
-          document.fonts.ready,
-          new Promise(r => setTimeout(r, 600))
-        ]);
-      } catch {}
-    }
-
-    // 5. Scroll back to top (0,0) for 1:1 clean canvas coordinates
-    window.scrollTo({ left: 0, top: 0, behavior: 'instant' });
-    window.dispatchEvent(new Event('scroll'));
-    // Allow sticky / fixed headers to re-dock cleanly
-    await new Promise(r => setTimeout(r, 120));
-
-    return { initialX, initialY };
-  }
-
-
+// Zcrap - SVG Vector Serializer & Direct Paste Generator
   // Helper for generating precise SVG Path for asymmetric rounded corners
   function buildRoundedRectSvgPath(x, y, w, h, tl, tr, br, bl) {
     const maxR = Math.min(w / 2, h / 2);
@@ -2334,6 +2169,199 @@
       defsStr + body + '</svg>';
   }
 
+  // ==========================================================================
+  // MODULE: controller.js
+  // ==========================================================================
+
+// Zcrap - Page Capture Controller & Extension Messaging
+
+  // Full Capture Function with Animation Freezing (CDP Engine v3.0.0)
+  function capturePage(targetEl) {
+    const resumeAnimations = pauseAnimations();
+    try {
+      const root = targetEl || document.body;
+      const rootRect = root.getBoundingClientRect();
+
+      // Root node relative to itself is at (0, 0)
+      const rootData = serializeNode(root, rootRect, 0);
+      if (rootData) {
+        rootData.bounds.x = 0;
+        rootData.bounds.y = 0;
+        if (!targetEl || targetEl === document.body) {
+          const fullHeight = Math.max(
+            document.body.scrollHeight || 0,
+            document.documentElement.scrollHeight || 0,
+            document.body.offsetHeight || 0,
+            document.documentElement.offsetHeight || 0,
+            rootData.bounds.height
+          );
+          rootData.bounds.height = fullHeight;
+
+          // Root Wrapper Unrolling:
+          // Modern frameworks (Next.js #__next, Nuxt, Vite #root) wrap all page content in full-height
+          // anonymous <div> wrappers. If the root contains only a single unstyled wrapper (or nested wrappers),
+          // unroll them so semantic landmark sections (<header>, <main>, <footer>, <nav>, <section>)
+          // are promoted directly under the canvas artboard, matching html.to.design!
+          while (
+            rootData.children &&
+            rootData.children.length === 1 &&
+            rootData.children[0].type === 'frame'
+          ) {
+            const onlyChild = rootData.children[0];
+            const hasVisuals = onlyChild.backgroundColor || onlyChild.backgroundImage || onlyChild.border || (onlyChild.borderRadius && (onlyChild.borderRadius.topLeft > 0));
+            if (hasVisuals) break;
+            if (onlyChild.children && onlyChild.children.length > 0) {
+              const offX = onlyChild.bounds ? (onlyChild.bounds.x || 0) : 0;
+              const offY = onlyChild.bounds ? (onlyChild.bounds.y || 0) : 0;
+              if (offX !== 0 || offY !== 0) {
+                for (const c of onlyChild.children) {
+                  if (c.bounds) {
+                    c.bounds.x += offX;
+                    c.bounds.y += offY;
+                  }
+                }
+              }
+              rootData.children = onlyChild.children;
+            } else {
+              break;
+            }
+          }
+        }
+      }
+
+      return {
+        app: 'Zcrap',
+        version: '3.7.1',
+        title: document.title || 'Web Capture',
+        url: window.location.href,
+        viewport: {
+          width: Math.round(window.innerWidth),
+          height: Math.round(window.innerHeight)
+        },
+        rootNode: rootData
+      };
+    } finally {
+      resumeAnimations();
+    }
+  }
+
+  // Visual Toast
+  function showToast(msg, isSuccess = true) {
+    const old = document.getElementById('__zcrap_toast');
+    if (old) old.remove();
+
+    const t = document.createElement('div');
+    t.id = '__zcrap_toast';
+    t.style.position = 'fixed';
+    t.style.bottom = '24px';
+    t.style.right = '24px';
+    t.style.background = isSuccess ? '#090D16' : '#7F1D1D';
+    t.style.color = '#FFF';
+    t.style.border = `2px solid ${isSuccess ? '#00F0FF' : '#EF4444'}`;
+    t.style.borderRadius = '8px';
+    t.style.padding = '12px 20px';
+    t.style.fontSize = '14px';
+    t.style.fontWeight = 'bold';
+    t.style.boxShadow = '0 12px 30px rgba(0,0,0,0.6)';
+    t.style.zIndex = '2147483647';
+    t.style.fontFamily = '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+    t.style.transition = 'opacity 0.3s ease';
+    t.textContent = msg;
+    document.body.appendChild(t);
+    setTimeout(() => {
+      t.style.opacity = '0';
+      setTimeout(() => t.remove(), 300);
+    }, 4000);
+  }
+
+  // Auto-scroll and preload pipeline for deep pages (Lazy images, dynamic sections, web fonts)
+  async function autoScrollAndPreloadPage() {
+    const initialX = window.scrollX;
+    const initialY = window.scrollY;
+
+    // 1. Force lazy-loading attributes to eager on all media
+    try {
+      const lazyElements = document.querySelectorAll('img, picture source, iframe');
+      lazyElements.forEach(el => {
+        if (el.getAttribute('loading') === 'lazy') {
+          el.setAttribute('loading', 'eager');
+        }
+        const lazySrc = el.dataset?.src || el.dataset?.original || el.dataset?.lazySrc || el.dataset?.url;
+        if (lazySrc && !el.src) {
+          el.src = lazySrc;
+        }
+        const lazySrcset = el.dataset?.srcset;
+        if (lazySrcset && !el.srcset) {
+          el.srcset = lazySrcset;
+        }
+      });
+    } catch {}
+
+    // 2. Step-scroll from top to bottom to trigger IntersectionObservers and scroll events
+    const viewportHeight = window.innerHeight || 800;
+    const totalHeight = Math.max(
+      document.body.scrollHeight || 0,
+      document.documentElement.scrollHeight || 0,
+      document.body.offsetHeight || 0,
+      document.documentElement.offsetHeight || 0
+    );
+
+    if (totalHeight > viewportHeight * 1.2) {
+      const step = Math.min(Math.round(viewportHeight * 0.75), 650);
+      const maxSteps = 40; // Max ~25,000px depth protection
+      let currentY = 0;
+      let stepCount = 0;
+
+      while (currentY < totalHeight && stepCount < maxSteps) {
+        currentY += step;
+        window.scrollTo({ left: 0, top: currentY, behavior: 'instant' });
+        window.dispatchEvent(new Event('scroll'));
+        await new Promise(r => setTimeout(r, 40));
+        stepCount++;
+      }
+
+      // Hit very bottom
+      window.scrollTo({ left: 0, top: totalHeight, behavior: 'instant' });
+      window.dispatchEvent(new Event('scroll'));
+      await new Promise(r => setTimeout(r, 80));
+    }
+
+    // 3. Wait for pending images to finish loading / decoding
+    const imgs = Array.from(document.images);
+    const pending = imgs.filter(img => !img.complete && (img.src || img.currentSrc));
+    if (pending.length > 0) {
+      await Promise.allSettled(
+        pending.slice(0, 50).map(img => {
+          if (img.decode) return img.decode().catch(() => {});
+          return new Promise(resolve => {
+            img.onload = img.onerror = resolve;
+            setTimeout(resolve, 500);
+          });
+        })
+      );
+    }
+
+    // 4. Wait for web fonts
+    if (document.fonts && document.fonts.ready) {
+      try {
+        await Promise.race([
+          document.fonts.ready,
+          new Promise(r => setTimeout(r, 600))
+        ]);
+      } catch {}
+    }
+
+    // 5. Scroll back to top (0,0) for 1:1 clean canvas coordinates
+    window.scrollTo({ left: 0, top: 0, behavior: 'instant' });
+    window.dispatchEvent(new Event('scroll'));
+    // Allow sticky / fixed headers to re-dock cleanly
+    await new Promise(r => setTimeout(r, 120));
+
+    return { initialX, initialY };
+  }
+
+
+
     // Direct Paste Figma Clipboard Writer (writes text/html & text/plain)
   async function writeToClipboard(text) {
     try {
@@ -2547,4 +2575,6 @@
       return true; // Keep message channel open for async response
     }
   });
+
+
 })();

@@ -233,7 +233,13 @@ const jsFiles = [
   'extension/background.js',
   'extension/content.js',
   'extension/popup.js',
+  'extension/src/parsers.js',
+  'extension/src/naming.js',
+  'extension/src/dom-serializer.js',
+  'extension/src/svg-serializer.js',
+  'extension/src/controller.js',
   'figma-plugin/code.js',
+  'scripts/build.js',
   'scripts/validate.js',
   'scripts/package.js'
 ];
