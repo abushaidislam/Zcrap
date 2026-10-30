@@ -208,10 +208,10 @@ async function buildFigmaNode(nodeData, options = {}) {
 
     textNode.characters = nodeData.text || '';
     if (nodeData.style?.fontSize) {
-      textNode.fontSize = Math.max(8, Math.round(nodeData.style.fontSize));
+      textNode.fontSize = Math.max(8, nodeData.style.fontSize);
     }
     if (nodeData.style?.lineHeight && nodeData.style.lineHeight > 0) {
-      textNode.lineHeight = { value: Math.round(nodeData.style.lineHeight), unit: 'PIXELS' };
+      textNode.lineHeight = { value: nodeData.style.lineHeight, unit: 'PIXELS' };
     }
 
     const textColor = parseColor(nodeData.style?.color);
@@ -278,6 +278,15 @@ async function buildFigmaNode(nodeData, options = {}) {
               textNode.setRangeHyperlink(r.start, r.end, { type: 'URL', value: r.href });
             } catch {}
           }
+          if (r.fontWeight || r.fontFamily || r.fontStyle) {
+            const rangeItalic = (r.fontStyle || nodeData.style?.fontStyle) === 'italic';
+            const rangeStyle = getFontStyle(r.fontWeight || nodeData.style?.fontWeight, rangeItalic);
+            const rangeFamily = r.fontFamily || targetFamily;
+            try {
+              const rangeFont = await loadFontSafe(rangeFamily, rangeStyle, rangeItalic);
+              textNode.setRangeFontName(r.start, r.end, rangeFont);
+            } catch {}
+          }
         }
       }
     }
@@ -336,7 +345,11 @@ async function buildFigmaNode(nodeData, options = {}) {
     if (nodeData.imageBytes) {
       try {
         const image = figma.createImage(new Uint8Array(nodeData.imageBytes));
-        rectNode.fills = [{ type: 'IMAGE', imageHash: image.hash, scaleMode: 'FILL' }];
+        rectNode.fills = [{
+          type: 'IMAGE',
+          imageHash: image.hash,
+          scaleMode: nodeData.objectFit === 'contain' || nodeData.objectFit === 'scale-down' ? 'FIT' : 'FILL'
+        }];
       } catch {
         rectNode.fills = [{ type: 'SOLID', color: { r: 0.9, g: 0.9, b: 0.9 } }];
       }
@@ -619,7 +632,9 @@ async function buildFigmaNode(nodeData, options = {}) {
               }
             }
 
-            // 3. Text Nodes: In VERTICAL containers (cards, columns), multi-line text MUST FILL width and wrap!
+            // 3. Preserve captured text widths in vertical containers. Filling every
+            // multiline text node makes constrained headings expand to the parent
+            // width and changes the browser's original line breaks.
             if (childData.type === 'text') {
               try {
                 const isSingleLine = childData.isSingleLine || childData.style?.whiteSpace === 'nowrap';
@@ -627,10 +642,14 @@ async function buildFigmaNode(nodeData, options = {}) {
                   // Inside a VERTICAL container (e.g. Card, Column, List)
                   if (isSingleLine) {
                     childNode.layoutSizingHorizontal = 'HUG';
-                  } else {
-                    // Multi-line text inside vertical card fills width and wraps naturally!
+                  } else if (fc.isFullWidth || fc.alignSelf === 'stretch') {
                     childNode.layoutAlign = 'STRETCH';
                     childNode.layoutSizingHorizontal = 'FILL';
+                    childNode.textAutoResize = 'HEIGHT';
+                  } else {
+                    // Keep the measured browser width for max-width headings and
+                    // other constrained text blocks.
+                    childNode.layoutSizingHorizontal = 'FIXED';
                     childNode.textAutoResize = 'HEIGHT';
                   }
                   childNode.layoutSizingVertical = 'HUG';

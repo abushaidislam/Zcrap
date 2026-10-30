@@ -200,15 +200,6 @@
     return el.shadowRoot || null;
   }
 
-  // --- 6. Text Ellipsis Truncation Detection ---
-  function detectTextEllipsis(el, style) {
-    if (!el || !style) return false;
-    const hasEllipsis = style.textOverflow === 'ellipsis';
-    const hasLineClamp = style.webkitLineClamp && style.webkitLineClamp !== 'none';
-    if (!hasEllipsis && !hasLineClamp) return false;
-    return (el.scrollWidth > el.clientWidth + 1) || (el.scrollHeight > el.clientHeight + 1);
-  }
-
   // Fast canvas image capture (for rendered images on page)
   function captureRenderedImage(imgEl) {
     try {
@@ -575,7 +566,11 @@
 
     // 2. Semantic Roles & Landmarks
     if (role === 'navigation' || tagName === 'nav') {
-      return semanticClass || id || 'Navigation';
+      const hasOl = el.querySelector && el.querySelector('ol');
+      const hasUl = el.querySelector && el.querySelector('ul');
+      if (hasOl) return 'Nav → Ordered List';
+      if (hasUl) return 'Nav → List';
+      return semanticClass || id || 'Nav';
     }
     if (role === 'banner' || tagName === 'header') {
       return semanticClass || id || 'Header';
@@ -584,7 +579,7 @@
       return semanticClass || id || 'Footer';
     }
     if (role === 'main' || tagName === 'main') {
-      return semanticClass || id || 'Main Content';
+      return semanticClass || id || 'Main';
     }
     if (role === 'dialog' || tagName === 'dialog') {
       return semanticClass || id || 'Modal Dialog';
@@ -603,7 +598,7 @@
     // 4. Headings
     if (/^h[1-6]$/.test(tagName)) {
       const level = tagName.charAt(1);
-      return textSnippet ? `H${level}: ${textSnippet}` : `Heading ${level}`;
+      return textSnippet ? `Heading ${level}: ${textSnippet}` : `Heading ${level}`;
     }
 
     // 5. Paragraphs
@@ -623,7 +618,10 @@
     if (tagName === 'form') return semanticClass || id || 'Form';
 
     // 7. Lists
-    if (tagName === 'ul' || tagName === 'ol') {
+    if (tagName === 'ol') {
+      return semanticClass || id || 'Ordered List';
+    }
+    if (tagName === 'ul') {
       return semanticClass || id || 'List';
     }
     if (tagName === 'li') {
@@ -642,8 +640,26 @@
     }
 
     // 9. Semantic Class or ID on Div/Span
+    if (tagName === 'div') {
+      return semanticClass || id || 'Container';
+    }
     if (semanticClass) return semanticClass;
     if (id) return id;
+
+    // Give otherwise anonymous wrappers a useful layer name from their
+    // direct content without searching the full descendant tree repeatedly.
+    if (tagName === 'div' || tagName === 'section') {
+      const directHeading = Array.from(el.children).find(child => /^h[1-6]$/.test(child.tagName.toLowerCase()));
+      const headingText = directHeading ? truncate(getDirectTextContent(directHeading), 36) : '';
+      const hasCardStyling = parsePx(style.borderTopLeftRadius) > 0 ||
+        (style.boxShadow && style.boxShadow !== 'none') ||
+        parsePx(style.borderTopWidth) > 0;
+      const mediaCount = el.querySelectorAll(':scope > img, :scope > picture, :scope > video, :scope > canvas').length;
+
+      if (hasCardStyling && headingText) return `Card: ${headingText}`;
+      if (headingText) return `Section: ${headingText}`;
+      if (mediaCount > 1) return 'Media Gallery';
+    }
 
     // 10. Layout Type Fallback
     if (style.display === 'flex' || style.display === 'inline-flex') {
@@ -747,6 +763,8 @@
             end,
             color: isDiffColor ? cStyle.color : null,
             fontWeight: isDiffWeight ? cStyle.fontWeight : null,
+            fontFamily: cStyle.fontFamily ? resolvePlatformFontFamily(cStyle.fontFamily) : null,
+            fontStyle: cStyle.fontStyle || null,
             href
           });
         }
@@ -754,6 +772,39 @@
     }
 
     return { text: rawText, ranges };
+  }
+
+  // Read the browser's actual line layout for plain and richly styled inline
+  // text. Character-count estimates drift from CSS wrapping as font metrics vary.
+  function getRenderedTextLines(el) {
+    const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+    const lines = [];
+    let currentLine = '';
+    let lineTop = null;
+    let textNode;
+
+    while ((textNode = walker.nextNode())) {
+      const value = textNode.textContent || '';
+      const words = /\S+/g;
+      let match;
+      while ((match = words.exec(value))) {
+        const range = document.createRange();
+        range.setStart(textNode, match.index);
+        range.setEnd(textNode, match.index + match[0].length);
+        const rect = range.getBoundingClientRect();
+        if (rect.width <= 0 || rect.height <= 0) continue;
+
+        if (lineTop !== null && Math.abs(rect.top - lineTop) > 3) {
+          if (currentLine) lines.push(currentLine);
+          currentLine = '';
+        }
+        if (lineTop === null || !currentLine) lineTop = rect.top;
+        currentLine += (currentLine ? ' ' : '') + match[0];
+      }
+    }
+
+    if (currentLine) lines.push(currentLine);
+    return lines;
   }
 
   // Main Recursive Serializer with RELATIVE PARENT BOUNDS
@@ -793,10 +844,12 @@
     }
 
     // RELATIVE POSITION TO DIRECT PARENT (Prevents cumulative double-offsetting!)
-    const relX = Math.round(rect.left - parentRect.left);
-    const relY = Math.round(rect.top - parentRect.top);
-    const width = Math.max(1, Math.round(rect.width));
-    const height = Math.max(1, Math.round(rect.height));
+    // Keep CSS sub-pixel geometry. Rounding each DOM edge independently adds
+    // cumulative drift in long pages and flex/grid rows.
+    const relX = Math.round((rect.left - parentRect.left) * 1000) / 1000;
+    const relY = Math.round((rect.top - parentRect.top) * 1000) / 1000;
+    const width = Math.max(1, Math.round(rect.width * 1000) / 1000);
+    const height = Math.max(1, Math.round(rect.height * 1000) / 1000);
 
     const bounds = { x: relX, y: relY, width, height };
     const isAbsolute = style.position === 'absolute' || style.position === 'fixed';
@@ -1090,6 +1143,8 @@
         href,
         rotation: parseTransform(style.transform),
         src: dataUri,
+        objectFit: style.objectFit || 'fill',
+        objectPosition: style.objectPosition || '50% 50%',
         borderRadius: imgBorderRadius,
         opacity: parseOpacity(style.opacity)
       };
@@ -1138,6 +1193,7 @@
           href,
           rotation: parseTransform(style.transform),
           text: textInfo.text,
+          lines: getRenderedTextLines(el),
           ranges: textInfo.ranges,
           isSingleLine,
           style: {
@@ -1210,19 +1266,21 @@
       // 3b. Traverse childNodes in sequential DOM order (maintains natural text & element order!)
       for (const child of el.childNodes) {
         if (child.nodeType === Node.TEXT_NODE) {
-          const textVal = child.textContent?.replace(/\s+/g, ' ');
+          const sourceText = child.textContent || '';
+          const textVal = sourceText.replace(/\s+/g, ' ');
           if (textVal && textVal.trim().length > 0) {
             let textBounds = { x: 0, y: 0, width, height };
+            let range = null;
             try {
-              const range = document.createRange();
+              range = document.createRange();
               range.selectNodeContents(child);
               const textRect = range.getBoundingClientRect();
               if (textRect.width > 0 && textRect.height > 0) {
                 textBounds = {
-                  x: Math.round(textRect.left - rect.left),
-                  y: Math.round(textRect.top - rect.top),
-                  width: Math.round(textRect.width),
-                  height: Math.round(textRect.height)
+                  x: Math.round((textRect.left - rect.left) * 1000) / 1000,
+                  y: Math.round((textRect.top - rect.top) * 1000) / 1000,
+                  width: Math.round(textRect.width * 1000) / 1000,
+                  height: Math.round(textRect.height * 1000) / 1000
                 };
               }
             } catch {}
@@ -1243,7 +1301,7 @@
                   
                   for (let w = 0; w < words.length; w++) {
                     const word = words[w];
-                    const wordIdx = textVal.indexOf(word, searchOffset);
+                    const wordIdx = sourceText.indexOf(word, searchOffset);
                     if (wordIdx !== -1) {
                       searchOffset = wordIdx + word.length;
                       const wRange = document.createRange();
@@ -1492,7 +1550,7 @@
 
       return {
         app: 'Zcrap',
-        version: '3.0.0',
+        version: '3.7.1',
         title: document.title || 'Web Capture',
         url: window.location.href,
         viewport: {
@@ -1687,8 +1745,6 @@
     }
   }
 
-  let clipCounter = 0;
-
   function wrapTextToLines(text, maxWidth, fontSize, letterSpacing) {
     if (!text || maxWidth <= 0) return [text];
     const ls = letterSpacing || 0;
@@ -1730,6 +1786,25 @@
     return btoa(binString);
   }
 
+  let svgIdCounts = Object.create(null);
+
+  function formatSvgId(name) {
+    if (!name) return 'Layer';
+    const clean = String(name)
+      .replace(/[\r\n\t]+/g, ' ')
+      .replace(/[<>"'&]/g, '')
+      .trim();
+    const base = clean.slice(0, 50) || 'Layer';
+    const count = (svgIdCounts[base] || 0) + 1;
+    svgIdCounts[base] = count;
+    return count === 1 ? base : base + ' ' + count;
+  }
+
+  function formatSvgDataName(name) {
+    if (!name) return 'Layer';
+    return escapeXml(String(name).replace(/[\r\n\t]+/g, ' ').replace(/[<>"'&]/g, '').trim().slice(0, 80));
+  }
+
   function serializeNodeToFigmaSvg(node, isRoot) {
     if (!node || !node.bounds) return '';
     const { x, y, width, height } = node.bounds;
@@ -1749,6 +1824,13 @@
       const lineHeight = s.lineHeight || Math.round(fontSize * 1.3);
       const textY = Math.round(fontSize * 0.85);
       const letterSpacingAttr = s.letterSpacing ? ' letter-spacing="' + s.letterSpacing + 'px"' : '';
+      const textName = node.name || truncate(text, 48) || 'Text';
+      const textId = formatSvgId(textName);
+      const textDataName = formatSvgDataName(textName);
+      const italicAttr = s.fontStyle === 'italic' ? ' font-style="italic"' : '';
+      const decorationAttr = s.textDecoration && s.textDecoration !== 'none'
+        ? ' text-decoration="' + escapeXml(s.textDecoration) + '"'
+        : '';
 
       let textAnchor = '';
       let textX = 0;
@@ -1768,43 +1850,53 @@
       if (lines.length > 1) {
         let tspans = '';
         lines.forEach((line, index) => {
-          const curY = textY + (index * lineHeight);
-          tspans += '    <tspan x="' + textX + '" y="' + curY + '">' + escapeXml(line) + '</tspan>\n';
+          const curY = y + textY + (index * lineHeight);
+          tspans += '    <tspan x="' + (x + textX) + '" y="' + curY + '">' + escapeXml(line) + '</tspan>\n';
         });
-        return '<g transform="translate(' + x + ', ' + y + ')"' + opacityAttr + '>\n' +
-          '  <text font-family="' + escapeXml(fontFamily) + '" font-size="' + fontSize + '" font-weight="' + fontWeight + '" fill="' + color + '"' + textFillOpacity + textAnchor + letterSpacingAttr + '>\n' +
+        return '<text id="' + textId + '" data-name="' + textDataName + '" font-family="' + escapeXml(fontFamily) + '" font-size="' + fontSize + '" font-weight="' + fontWeight + '" fill="' + color + '"' + textFillOpacity + textAnchor + letterSpacingAttr + italicAttr + decorationAttr + opacityAttr + '>\n' +
           tspans +
-          '  </text>\n' +
-          '</g>\n';
+          '</text>\n';
       }
 
-      return '<g transform="translate(' + x + ', ' + y + ')"' + opacityAttr + '>\n' +
-        '  <text x="' + textX + '" y="' + textY + '" font-family="' + escapeXml(fontFamily) + '" font-size="' + fontSize + '" font-weight="' + fontWeight + '" fill="' + color + '"' + textFillOpacity + textAnchor + letterSpacingAttr + '>' + escapeXml(text) + '</text>\n' +
-        '</g>\n';
+      return '<text id="' + textId + '" data-name="' + textDataName + '" x="' + (x + textX) + '" y="' + (y + textY) + '" font-family="' + escapeXml(fontFamily) + '" font-size="' + fontSize + '" font-weight="' + fontWeight + '" fill="' + color + '"' + textFillOpacity + textAnchor + letterSpacingAttr + italicAttr + decorationAttr + opacityAttr + '>' + escapeXml(text) + '</text>\n';
     }
 
     // 2. Image Node (with circular clipPath support)
     if (node.type === 'image' && node.src) {
       let clipDef = '';
       let clipAttr = '';
-      const r = node.borderRadius ? Math.max(
-        node.borderRadius.topLeft || 0,
-        node.borderRadius.topRight || 0,
-        node.borderRadius.bottomRight || 0,
-        node.borderRadius.bottomLeft || 0
-      ) : 0;
-
-      if (r > 0) {
-        clipCounter++;
-        const clipId = 'zcrap_clip_' + clipCounter;
-        const safeR = Math.min(r, Math.round(width / 2), Math.round(height / 2));
-        clipDef = '  <defs><clipPath id="' + clipId + '"><rect x="0" y="0" width="' + width + '" height="' + height + '" rx="' + safeR + '" ry="' + safeR + '"/></clipPath></defs>\n';
+      const radii = node.borderRadius || {};
+      const tl = radii.topLeft || 0;
+      const tr = radii.topRight || 0;
+      const br = radii.bottomRight || 0;
+      const bl = radii.bottomLeft || 0;
+      if (tl || tr || br || bl) {
+        const clipId = formatSvgId('Mask for ' + (node.name || 'Image'));
+        const pathData = buildRoundedRectSvgPath(0, 0, width, height, tl, tr, br, bl);
+        clipDef = '  <defs><clipPath id="' + clipId + '"><path d="' + pathData + '"/></clipPath></defs>\n';
         clipAttr = ' clip-path="url(#' + clipId + ')"';
       }
 
-      return '<g transform="translate(' + x + ', ' + y + ')"' + opacityAttr + clipAttr + '>\n' +
+      const objectFit = node.objectFit || 'fill';
+      const objectPosition = (node.objectPosition || '50% 50%').trim().split(/\s+/);
+      const align = (v, axis) => {
+        if (v === 'left' || v === 'top') return axis === 'x' ? 'xMin' : 'YMin';
+        if (v === 'right' || v === 'bottom') return axis === 'x' ? 'xMax' : 'YMax';
+        return axis === 'x' ? 'xMid' : 'YMid';
+      };
+      const preserveAspectRatio = objectFit === 'cover'
+        ? align(objectPosition[0], 'x') + align(objectPosition[1] || objectPosition[0], 'y') + ' slice'
+        : objectFit === 'contain' || objectFit === 'scale-down'
+          ? align(objectPosition[0], 'x') + align(objectPosition[1] || objectPosition[0], 'y') + ' meet'
+          : 'none';
+
+      const imgLayerName = node.name || 'image';
+      const imgId = formatSvgId(imgLayerName);
+      const imgDataName = formatSvgDataName(imgLayerName);
+
+      return '<g id="' + imgId + '" data-name="' + imgDataName + '" transform="translate(' + x + ', ' + y + ')"' + opacityAttr + clipAttr + '>\n' +
         clipDef +
-        '  <image href="' + escapeXml(node.src) + '" x="0" y="0" width="' + width + '" height="' + height + '" preserveAspectRatio="none"/>\n' +
+        '  <image id="' + imgId + '_img" data-name="' + imgDataName + '" href="' + escapeXml(node.src) + '" x="0" y="0" width="' + width + '" height="' + height + '" preserveAspectRatio="' + preserveAspectRatio + '"/>\n' +
         '</g>\n';
     }
 
@@ -1850,8 +1942,7 @@
         }
       }
 
-      clipCounter++;
-      const svgClipId = 'zcrap_svgclip_' + clipCounter;
+      const svgClipId = formatSvgId('Vector bounds for ' + (node.name || 'SVG'));
       const clipDef = '  <defs><clipPath id="' + svgClipId + '"><rect x="' + minX + '" y="' + minY + '" width="' + vbW + '" height="' + vbH + '"/></clipPath></defs>\n';
       const clipAttr = ' clip-path="url(#' + svgClipId + ')"';
 
@@ -1860,7 +1951,11 @@
         .replace(/<svg[^>]*>/i, '')
         .replace(/<\/svg>/i, '');
 
-      return '<g transform="' + transformStr + '"' + opacityAttr + clipAttr + '>\n' +
+      const svgLayerName = node.name || 'SVG';
+      const sId = formatSvgId(svgLayerName);
+      const sDataName = formatSvgDataName(svgLayerName);
+
+      return '<g id="' + sId + '" data-name="' + sDataName + '" transform="' + transformStr + '"' + opacityAttr + clipAttr + '>\n' +
         clipDef +
         inner + '\n' +
         '</g>\n';
@@ -1941,11 +2036,14 @@
 
     let bgRect = '';
     if (fillVal !== 'none' || strokeAttr) {
+      const rectName = (fillVal !== 'none') ? 'Background' : 'Border';
+      const rId = formatSvgId(rectName);
+      const rDataName = formatSvgDataName(rectName);
       if (isAsymmetric) {
         const pathData = buildRoundedRectSvgPath(0, 0, width, height, tl, tr, br, bl);
-        bgRect = '<path d="' + pathData + '" fill="' + fillVal + '"' + fillOpacityAttr + strokeAttr + '/>\n';
+        bgRect = '<path id="' + rId + '" data-name="' + rDataName + '" d="' + pathData + '" fill="' + fillVal + '"' + fillOpacityAttr + strokeAttr + '/>\n';
       } else {
-        bgRect = '<rect x="0" y="0" width="' + width + '" height="' + height + '" fill="' + fillVal + '"' + fillOpacityAttr + rx + strokeAttr + '/>\n';
+        bgRect = '<rect id="' + rId + '" data-name="' + rDataName + '" x="0" y="0" width="' + width + '" height="' + height + '" fill="' + fillVal + '"' + fillOpacityAttr + rx + strokeAttr + '/>\n';
       }
     }
 
@@ -1954,8 +2052,7 @@
     let frameClipAttr = '';
     const hasFrameClip = (node.overflow === 'hidden' || node.overflow === 'clip') && maxRadius > 0;
     if (hasFrameClip) {
-      clipCounter++;
-      const fClipId = 'zcrap_fclip_' + clipCounter;
+      const fClipId = formatSvgId('Mask for ' + (node.name || 'Container'));
       frameClipDef = '  <defs><clipPath id="' + fClipId + '"><rect x="0" y="0" width="' + width + '" height="' + height + '"' + rx + '/></clipPath></defs>\n';
       frameClipAttr = ' clip-path="url(#' + fClipId + ')"';
     }
@@ -1971,7 +2068,11 @@
       return bgRect + childrenSvg;
     }
 
-    return '<g transform="translate(' + x + ', ' + y + ')"' + opacityAttr + frameClipAttr + '>\n' + frameClipDef + bgRect + childrenSvg + '</g>\n';
+    const frameName = node.name || 'Container';
+    const gId = formatSvgId(frameName);
+    const gDataName = formatSvgDataName(frameName);
+
+    return '<g id="' + gId + '" data-name="' + gDataName + '" transform="translate(' + x + ', ' + y + ')"' + opacityAttr + frameClipAttr + '>\n' + frameClipDef + bgRect + childrenSvg + '</g>\n';
   }
 
   function buildFigmaDirectPastePayload(payload) {
@@ -1980,8 +2081,8 @@
     const height = Math.max(10, rootNode.bounds.height);
 
     const defs = [];
+    svgIdCounts = Object.create(null);
     gradCounter = 0;
-    clipCounter = 0;
     buildSvgDefs(rootNode, defs);
 
     const body = serializeNodeToFigmaSvg(rootNode, true);
@@ -2011,7 +2112,11 @@
       }
     }
 
-    return '<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="' + width + '" height="' + height + '" viewBox="0 0 ' + width + ' ' + height + '">\n' +
+    const rootTitle = payload.title || document.title || 'Web Page';
+    const rootId = formatSvgId(rootTitle);
+    const rootDataName = formatSvgDataName(rootTitle);
+
+    return '<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" id="' + rootId + '" data-name="' + rootDataName + '" width="' + width + '" height="' + height + '" viewBox="0 0 ' + width + ' ' + height + '">\n' +
       '<!--zcrap-metadata:' + base64Json + ':zcrap-metadata-->\n' +
       defsStr + body + '</svg>';
   }

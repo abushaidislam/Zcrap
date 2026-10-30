@@ -1,6 +1,32 @@
-# ⚡ Zcrap v3.5.0 Vector Scaling Pro — Web to Figma Converter (100% Free & Unlimited)
+# ⚡ Zcrap v3.8.0 Semantic Layer Architecture — Web to Figma Converter (100% Free & Unlimited)
 
-**Zcrap** is a completely free, open-source alternative to `html.to.design` that converts any live website or web element into editable Figma Auto-Layout layers, fonts, images, gradients, and SVGs with 1:1 precision.
+**Zcrap** is a free, open-source web-to-Figma converter. Pixel-Perfect import is the default for visual matching; Auto-Layout conversion remains an explicit option when responsive editable flow is preferred.
+
+## Release notes
+
+### v3.8.0 — Direct Canvas Paste Semantic Layers
+
+- **1:1 Semantic Naming matching html.to.design**: SVG groups and elements now receive semantic names (`Header`, `Nav → Ordered List`, `Nav → List`, `Main`, `Footer`, `Section`, `Container`, `Button: [Label]`, `Heading 1-6`).
+- **Clean Shape Elements**: Background rectangles and borders now output with clean layer identifiers (`Background`, `Border`) instead of anonymous `Vector` layers.
+- **Unrestricted Layer Names in SVG**: Preserved natural human-readable names with spaces and Unicode (`Nav → Ordered List`, `Button: ...`) across Figma's native SVG importer.
+
+### v3.7.1 — Text Sizing Fix
+
+- Preserve captured widths for constrained multiline text in vertical Auto-Layout containers so headings keep their browser line breaks.
+
+### v3.7.0 — Semantic Layers
+
+- Give direct-paste SVG text layers readable names without an extra wrapper group.
+- Use readable unique layer IDs and content-based names for masks instead of `zcrap_fclip_*` IDs.
+- Infer card and section names from direct headings when a page wrapper has no semantic class or ID.
+
+### v3.6.0 — Fidelity Engine
+
+- Preserve sub-pixel DOM bounds through capture instead of rounding every edge to whole pixels.
+- Fix DOM text line measurement so wrapped text line ranges are actually read from the captured Range.
+- Preserve image `object-fit` when generating direct-paste SVG and use fit scaling for contained images in the plugin.
+- Preserve inline font family, weight, and italic differences in rich-text ranges where Figma has a matching font.
+- Make Pixel-Perfect import the default; Auto-Layout stays available as an opt-in mode.
 
 In the **v3.5.0** update, after thoroughly analyzing `html.to.design`'s architecture, professional mechanisms such as **Chrome DevTools Protocol (CDP) bridge activation**, OS-aware platform font detection, secure cross-origin iframe handling, and GSAP/AOS scroll cleaning have been directly implemented. It operates entirely client-side and locally, eliminating the need for cloud credit limits or paid subscriptions.
 
