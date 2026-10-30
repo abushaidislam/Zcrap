@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Zcrap - Web to Figma",
-  "version": "3.8.0",
+  "version": "3.8.1",
   "description": "Capture any website UI to Figma with 1:1 subpixel precision, Chrome DevTools Protocol (CDP) engine, real OS platform fonts, CSS Gradients, Pseudo-Elements, Glassmorphism & Auto-Layout.",
   "permissions": [
     "activeTab",

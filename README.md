@@ -1,8 +1,13 @@
-# ⚡ Zcrap v3.8.0 Semantic Layer Architecture — Web to Figma Converter (100% Free & Unlimited)
+# ⚡ Zcrap v3.8.1 Semantic Layer Architecture — Web to Figma Converter (100% Free & Unlimited)
 
 **Zcrap** is a free, open-source web-to-Figma converter. Pixel-Perfect import is the default for visual matching; Auto-Layout conversion remains an explicit option when responsive editable flow is preferred.
 
 ## Release notes
+
+### v3.8.1 — Redundant Wrapper Flattening & Button Listbox Naming
+
+- **Redundant Group Flattening**: Automatically eliminated unstyled single-child wrapper groups in SVG serialization, lifting text and icons directly into button and container parents without extra nested `Group` layers.
+- **ARIA & Role-Aware Naming**: Added dedicated detection for `aria-haspopup="listbox"` (`Button listbox`), `aria-haspopup="menu"` (`Button menu`), `aria-label` theme buttons (`Button - Dark theme`, `Button - Light theme`, `Button - System theme`), `Link - [Label]`, and `<small>` elements.
 
 ### v3.8.0 — Direct Canvas Paste Semantic Layers
 

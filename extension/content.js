@@ -555,13 +555,32 @@
 
     const semanticClass = getCleanSemanticClass(el);
     const ariaLabel = el.getAttribute('aria-label') || el.getAttribute('title');
+    const ariaHasPopup = el.getAttribute('aria-haspopup');
     const textSnippet = directText || truncate(getDirectTextContent(el), 24);
     const id = el.id && !el.id.startsWith('__') ? toTitleCase(el.id) : null;
     const role = el.getAttribute('role');
 
-    // 1. Explicit ARIA Names
-    if (ariaLabel && ariaLabel.trim().length > 0) {
-      return truncate(ariaLabel.trim(), 30);
+    // 1. Buttons & Links (Full ARIA & html.to.design naming alignment)
+    if (tagName === 'button' || role === 'button') {
+      if (ariaHasPopup === 'listbox' || role === 'combobox') {
+        return 'Button listbox';
+      }
+      if (ariaHasPopup === 'menu' || role === 'menu') {
+        return 'Button menu';
+      }
+      if (ariaLabel && ariaLabel.trim().length > 0) {
+        return `Button - ${truncate(ariaLabel.trim(), 30)}`;
+      }
+      const label = textSnippet || semanticClass || id;
+      return label ? `Button: ${label}` : 'Button';
+    }
+
+    if (tagName === 'a') {
+      if (ariaLabel && ariaLabel.trim().length > 0) {
+        return `Link - ${truncate(ariaLabel.trim(), 30)}`;
+      }
+      const label = textSnippet || semanticClass || id;
+      return label ? `Link: ${label}` : 'Link';
     }
 
     // 2. Semantic Roles & Landmarks
@@ -585,14 +604,9 @@
       return semanticClass || id || 'Modal Dialog';
     }
 
-    // 3. Buttons & Links
-    if (tagName === 'button' || role === 'button') {
-      const label = textSnippet || semanticClass || id;
-      return label ? `Button: ${label}` : 'Button';
-    }
-    if (tagName === 'a') {
-      const label = textSnippet || semanticClass || id;
-      return label ? `Link: ${label}` : 'Link';
+    // 3. Other elements with explicit ARIA label
+    if (ariaLabel && ariaLabel.trim().length > 0) {
+      return truncate(ariaLabel.trim(), 30);
     }
 
     // 4. Headings
@@ -601,7 +615,10 @@
       return textSnippet ? `Heading ${level}: ${textSnippet}` : `Heading ${level}`;
     }
 
-    // 5. Paragraphs
+    // 5. Paragraphs & Small text
+    if (tagName === 'small') {
+      return 'Small';
+    }
     if (tagName === 'p') {
       return textSnippet ? `Paragraph: ${textSnippet}` : 'Paragraph';
     }
@@ -2066,6 +2083,47 @@
 
     if (isRoot) {
       return bgRect + childrenSvg;
+    }
+
+    // Redundant wrapper flattening:
+    // If this node is NOT root, has NO visual styling (no background, no border, no clip, opacity is 1),
+    // and has a single child, we lift that child directly to avoid unnecessary nested Groups in Figma.
+    const hasVisuals = (bgRect && bgRect.trim().length > 0) || (frameClipAttr && frameClipAttr.length > 0) || (opacityAttr && opacityAttr.length > 0);
+    if (!hasVisuals && node.children && node.children.length === 1) {
+      const singleChild = node.children[0];
+      if (singleChild.type === 'text') {
+        const adjustedText = Object.assign({}, singleChild, {
+          bounds: {
+            x: singleChild.bounds.x + x,
+            y: singleChild.bounds.y + y,
+            width: singleChild.bounds.width,
+            height: singleChild.bounds.height
+          }
+        });
+        return serializeNodeToFigmaSvg(adjustedText, false);
+      }
+      if (singleChild.type === 'frame' && (node.name === 'Container' || node.name === 'Group' || node.name === 'Span')) {
+        const adjustedFrame = Object.assign({}, singleChild, {
+          bounds: {
+            x: singleChild.bounds.x + x,
+            y: singleChild.bounds.y + y,
+            width: singleChild.bounds.width,
+            height: singleChild.bounds.height
+          }
+        });
+        return serializeNodeToFigmaSvg(adjustedFrame, false);
+      }
+      if ((singleChild.type === 'svg' || singleChild.type === 'image') && (node.name === 'Container' || node.name === 'Group' || node.name === 'Span')) {
+        const adjustedChild = Object.assign({}, singleChild, {
+          bounds: {
+            x: singleChild.bounds.x + x,
+            y: singleChild.bounds.y + y,
+            width: singleChild.bounds.width,
+            height: singleChild.bounds.height
+          }
+        });
+        return serializeNodeToFigmaSvg(adjustedChild, false);
+      }
     }
 
     const frameName = node.name || 'Container';
